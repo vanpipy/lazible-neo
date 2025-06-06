@@ -9,12 +9,12 @@ return {
       providers = {
         deepseek = {
           __inherited_from = "openai",
-          api_key_name = vim.env.LLM_KEY,
+          api_key_name = "DEEPSEEK_API_KEY",
           endpoint = "https://api.deepseek.com/v1",
-          model = "deepseek-chat",
+          model = "deepseek-coder",
           extra_request_body = {
             temperature = 1,
-            max_tokens = 32768, -- remember to increase this value, otherwise it will stop generating halfway
+            max_tokens = 8192, -- remember to increase this value, otherwise it will stop generating halfway
           },
         },
       },
