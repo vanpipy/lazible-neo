@@ -1,159 +1,216 @@
 return {
-  "Kurama622/llm.nvim",
-  dependencies = { "nvim-lua/plenary.nvim", "MunifTanjim/nui.nvim" },
-  cmd = { "LLMSessionToggle", "LLMSelectedTextHandler", "LLMAppHandler" },
-  config = function()
-    local tools = require("llm.tools")
-
-    require("llm").setup({
-      -- [[ Deepseek ]]
-      url = "https://api.deepseek.com/chat/completions",
-      model = "deepseek-chat",
-      api_type = "openai",
-      max_tokens = 4096,
-      temperature = 0.3,
-      top_p = 0.7,
-
-      prompt = "You are a helpful chinese assistant.",
-
-      prefix = {
-        user = { text = "😃 ", hl = "Title" },
-        assistant = { text = "  ", hl = "Added" },
-      },
-
-      -- history_path = "/tmp/llm-history",
-      save_session = true,
-      max_history = 15,
-      max_history_name_length = 20,
-
-        -- stylua: ignore
-        keys = {
-          -- The keyboard mapping for the input window.
-          ["Input:Submit"]      = { mode = "n", key = "<cr>" },
-          ["Input:Cancel"]      = { mode = {"n", "i"}, key = "<C-c>" },
-          ["Input:Resend"]      = { mode = {"n", "i"}, key = "<C-r>" },
-
-          -- only works when "save_session = true"
-          ["Input:HistoryNext"] = { mode = {"n", "i"}, key = "<C-j>" },
-          ["Input:HistoryPrev"] = { mode = {"n", "i"}, key = "<C-k>" },
-
-          -- The keyboard mapping for the output window in "split" style.
-          ["Output:Ask"]        = { mode = "n", key = "i" },
-          ["Output:Cancel"]     = { mode = "n", key = "<C-c>" },
-          ["Output:Resend"]     = { mode = "n", key = "<C-r>" },
-
-          -- The keyboard mapping for the output and input windows in "float" style.
-          ["Session:Toggle"]    = { mode = "n", key = "<leader>ac" },
-          ["Session:Close"]     = { mode = "n", key = {"<esc>", "Q"} },
-
-          -- Scroll
-          ["PageUp"]            = { mode = {"i","n"}, key = "<C-b>" },
-          ["PageDown"]          = { mode = {"i","n"}, key = "<C-f>" },
-          ["HalfPageUp"]        = { mode = {"i","n"}, key = "<C-u>" },
-          ["HalfPageDown"]      = { mode = {"i","n"}, key = "<C-d>" },
-          ["JumpToTop"]         = { mode = "n", key = "gg" },
-          ["JumpToBottom"]      = { mode = "n", key = "G" },
-        },
-
-      -- display diff [require by action_handler]
-      display = {
-        diff = {
-          layout = "vertical", -- vertical|horizontal split for default provider
-          opts = { "internal", "filler", "closeoff", "algorithm:patience", "followwrap", "linematch:120" },
-          provider = "mini_diff", -- default|mini_diff
+  {
+    "yetone/avante.nvim",
+    event = "VeryLazy",
+    lazy = false,
+    version = false, -- set this if you want to always pull the latest change
+    opts = {
+      provider = "deepseek",
+      providers = {
+        deepseek = {
+          __inherited_from = "openai",
+          api_key_name = vim.env.LLM_KEY,
+          endpoint = "https://api.deepseek.com/v1",
+          model = "deepseek-chat",
+          extra_request_body = {
+            temperature = 1,
+            max_tokens = 32768, -- remember to increase this value, otherwise it will stop generating halfway
+          },
         },
       },
-      app_handler = {
-        -- Your AI tools Configuration
-        -- TOOL_NAME = { ... }
-        Completion = {
-          handler = tools.completion_handler,
-          opts = {
-            -------------------------------------------------
-            ---                   ollama
-            -------------------------------------------------
-            -- url = "http://localhost:11434/v1/completions",
-            -- model = "qwen2.5-coder:1.5b",
-            -- api_type = "ollama",
-            ------------------- end ollama ------------------
+    },
+    -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
+    build = "make",
+    -- build = "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false" -- for windows
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      "stevearc/dressing.nvim",
+      "nvim-lua/plenary.nvim",
+      "MunifTanjim/nui.nvim",
+      "echasnovski/mini.pick", -- for file_selector provider mini.pick
+      "nvim-telescope/telescope.nvim", -- for file_selector provider telescope
+      "hrsh7th/nvim-cmp", -- autocompletion for avante commands and mentions
+      "ibhagwan/fzf-lua", -- for file_selector provider fzf
+      "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
+      {
+        -- support for image pasting
+        "HakonHarnes/img-clip.nvim",
+        event = "VeryLazy",
+        opts = {
+          -- recommended settings
+          default = {
+            embed_image_as_base64 = false,
+            prompt_for_file_name = false,
+            drag_and_drop = {
+              insert_mode = true,
+            },
+            -- required for Windows users
+            use_absolute_path = true,
+          },
+        },
+      },
+      {
+        -- Make sure to set this up properly if you have lazy=true
+        "MeanderingProgrammer/render-markdown.nvim",
+        opts = {
+          file_types = { "markdown", "Avante" },
+        },
+        ft = { "markdown", "Avante" },
+      },
+    },
+  },
+  {
+    "saghen/blink.cmp",
+    version = not vim.g.lazyvim_blink_main and "*",
+    build = vim.g.lazyvim_blink_main and "cargo build --release",
+    opts_extend = {
+      "sources.completion.enabled_providers",
+      "sources.compat",
+      "sources.default",
+    },
+    dependencies = {
+      "rafamadriz/friendly-snippets",
+      -- add blink.compat to dependencies
+      {
+        "saghen/blink.compat",
+        optional = true, -- make optional so it's only enabled if any extras need it
+        opts = {},
+        version = not vim.g.lazyvim_blink_main and "*",
+      },
+      "Kaiser-Yang/blink-cmp-avante",
+    },
+    event = "InsertEnter",
 
-            -------------------------------------------------
-            ---                  deepseek
-            -------------------------------------------------
-            url = "https://api.deepseek.com/beta/completions",
-            model = "deepseek-chat",
-            api_type = "deepseek",
-            fetch_key = function()
-              return vim.env.LLM_KEY
-            end,
-            ------------------ end deepseek -----------------
+    ---@module 'blink.cmp'
+    ---@type blink.cmp.Config
+    opts = {
+      snippets = {
+        expand = function(snippet, _)
+          return LazyVim.cmp.expand(snippet)
+        end,
+      },
+      appearance = {
+        -- sets the fallback highlight groups to nvim-cmp's highlight groups
+        -- useful for when your theme doesn't support blink.cmp
+        -- will be removed in a future release, assuming themes add support
+        use_nvim_cmp_as_default = false,
+        -- set to 'mono' for 'Nerd Font Mono' or 'normal' for 'Nerd Font'
+        -- adjusts spacing to ensure icons are aligned
+        nerd_font_variant = "mono",
+      },
+      completion = {
+        accept = {
+          -- experimental auto-brackets support
+          auto_brackets = {
+            enabled = true,
+          },
+        },
+        menu = {
+          draw = {
+            treesitter = { "lsp" },
+          },
+        },
+        documentation = {
+          auto_show = true,
+          auto_show_delay_ms = 200,
+        },
+        ghost_text = {
+          enabled = vim.g.ai_cmp,
+        },
+      },
 
-            -------------------------------------------------
-            ---                 siliconflow
-            -------------------------------------------------
-            -- url = "https://api.siliconflow.cn/v1/completions",
-            -- model = "Qwen/Qwen2.5-Coder-7B-Instruct",
-            -- api_type = "openai",
-            -- fetch_key = function()
-            --   return "your api key"
-            -- end,
-            ------------------ end siliconflow -----------------
+      -- experimental signature help support
+      -- signature = { enabled = true },
 
-            -------------------------------------------------
-            ---                  codeium
-            ---    dependency: "Exafunction/codeium.nvim"
-            -------------------------------------------------
-            -- api_type = "codeium",
-            ------------------ end codeium ------------------
-
-            n_completions = 3,
-            context_window = 512,
-            max_tokens = 256,
-
-            -- A mapping of filetype to true or false, to enable completion.
-            filetypes = { sh = false },
-
-            -- Whether to enable completion of not for filetypes not specifically listed above.
-            default_filetype_enabled = true,
-
-            auto_trigger = true,
-
-            -- just trigger by { "@", ".", "(", "[", ":", " " } for `style = "nvim-cmp"`
-            only_trigger_by_keywords = true,
-
-            style = "virtual_text", -- nvim-cmp or blink.cmp
-
-            timeout = 10, -- max request time
-
-            -- only send the request every x milliseconds, use 0 to disable throttle.
-            throttle = 1000,
-            -- debounce the request in x milliseconds, set to 0 to disable debounce
-            debounce = 400,
-
-            keymap = {
-              virtual_text = {
-                accept = {
-                  mode = "i",
-                  keys = "<A-a>",
-                },
-                next = {
-                  mode = "i",
-                  keys = "<A-n>",
-                },
-                prev = {
-                  mode = "i",
-                  keys = "<A-p>",
-                },
-              },
+      sources = {
+        -- adding any nvim-cmp sources here will enable them
+        -- with blink.compat
+        compat = {},
+        default = { "avante", "lsp", "path", "snippets", "buffer" },
+        providers = {
+          avante = {
+            module = "blink-cmp-avante",
+            name = "Avante",
+            opts = {
+              -- optional
             },
           },
         },
       },
-    })
-  end,
-  keys = {
-    { "<leader>ac", mode = "n", "<cmd>LLMSessionToggle<cr>" },
-    { "<leader>ae", mode = "v", "<cmd>LLMSelectedTextHandler please explain the codes<cr>" },
-    { "<leader>ts", mode = "x", "<cmd>LLMSelectedTextHandler en to cn<cr>" },
+
+      cmdline = {
+        enabled = false,
+      },
+
+      keymap = {
+        preset = "enter",
+        ["<C-y>"] = { "select_and_accept" },
+      },
+    },
+    ---@param opts blink.cmp.Config | { sources: { compat: string[] } }
+    config = function(_, opts)
+      -- setup compat sources
+      local enabled = opts.sources.default
+      for _, source in ipairs(opts.sources.compat or {}) do
+        opts.sources.providers[source] = vim.tbl_deep_extend(
+          "force",
+          { name = source, module = "blink.compat.source" },
+          opts.sources.providers[source] or {}
+        )
+        if type(enabled) == "table" and not vim.tbl_contains(enabled, source) then
+          table.insert(enabled, source)
+        end
+      end
+
+      -- add ai_accept to <Tab> key
+      if not opts.keymap["<Tab>"] then
+        if opts.keymap.preset == "super-tab" then -- super-tab
+          opts.keymap["<Tab>"] = {
+            require("blink.cmp.keymap.presets")["super-tab"]["<Tab>"][1],
+            LazyVim.cmp.map({ "snippet_forward", "ai_accept" }),
+            "fallback",
+          }
+        else -- other presets
+          opts.keymap["<Tab>"] = {
+            LazyVim.cmp.map({ "snippet_forward", "ai_accept" }),
+            "fallback",
+          }
+        end
+      end
+
+      -- Unset custom prop to pass blink.cmp validation
+      opts.sources.compat = nil
+
+      -- check if we need to override symbol kinds
+      for _, provider in pairs(opts.sources.providers or {}) do
+        ---@cast provider blink.cmp.SourceProviderConfig|{kind?:string}
+        if provider.kind then
+          local CompletionItemKind = require("blink.cmp.types").CompletionItemKind
+          local kind_idx = #CompletionItemKind + 1
+
+          CompletionItemKind[kind_idx] = provider.kind
+          ---@diagnostic disable-next-line: no-unknown
+          CompletionItemKind[provider.kind] = kind_idx
+
+          ---@type fun(ctx: blink.cmp.Context, items: blink.cmp.CompletionItem[]): blink.cmp.CompletionItem[]
+          local transform_items = provider.transform_items
+          ---@param ctx blink.cmp.Context
+          ---@param items blink.cmp.CompletionItem[]
+          provider.transform_items = function(ctx, items)
+            items = transform_items and transform_items(ctx, items) or items
+            for _, item in ipairs(items) do
+              item.kind = kind_idx or item.kind
+              item.kind_icon = LazyVim.config.icons.kinds[item.kind_name] or item.kind_icon or nil
+            end
+            return items
+          end
+
+          -- Unset custom prop to pass blink.cmp validation
+          provider.kind = nil
+        end
+      end
+
+      require("blink.cmp").setup(opts)
+    end,
   },
 }
