@@ -21,7 +21,7 @@ return {
           ollama = function()
             return require("codecompanion.adapters").extend("ollama", {
               env = {
-                url = "http://local.services.com:8000",
+                url = "http://local.services.com:11434",
                 -- api_key = "OLLAMA_API_KEY",
               },
               headers = {
@@ -67,7 +67,7 @@ return {
             -- Consider using APPDATA instead.
             api_key = "TERM",
             name = "Ollama",
-            end_point = "http://local.services.com:8000/v1/completions",
+            end_point = "http://local.services.com:11434/v1/completions",
             model = "deepseek-coder-v2",
             optional = {
               max_tokens = 56,
@@ -86,7 +86,7 @@ return {
               openai_fim_compatible = {
                 api_key = "TERM",
                 name = "Ollama",
-                end_point = "http://local.services.com:8000/v1/completions",
+                end_point = "http://local.services.com:11434/v1/completions",
                 model = "deepseek-coder-v2",
                 optional = {
                   max_tokens = 256,
