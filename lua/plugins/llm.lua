@@ -1,188 +1,62 @@
 return {
-  {
-    "olimorris/codecompanion.nvim",
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      "nvim-lua/plenary.nvim",
-      {
-        "stevearc/dressing.nvim", -- Optional: Improves the default Neovim UI
-        opts = {},
+  "yetone/avante.nvim",
+  -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
+  -- ⚠️ must add this setting! ! !
+  -- build = vim.fn.has("win32")
+  --   and "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false"
+  --   or "make",
+  build = "make",
+  event = "VeryLazy",
+  version = false, -- Never set this value to "*"! Never!
+  ---@module 'avante'
+  ---@type avante.Config
+  opts = {
+    -- add any opts here
+    -- for example
+    provider = "ollama",
+    providers = {
+      ollama = {
+        endpoint = "http://127.0.0.1:11434",
+        model = "deepseek-coder-v2",
       },
     },
-    cmd = {
-      "CodeCompanion",
-      "CodeCompanionChat",
-      "CodeCompanionToggle",
-      "CodeCompanionActions",
-    },
-    config = function()
-      require("codecompanion").setup({
-        adapters = {
-          ollama = function()
-            return require("codecompanion.adapters").extend("ollama", {
-              env = {
-                url = "http://local.services.com:11434",
-                -- api_key = "OLLAMA_API_KEY",
-              },
-              headers = {
-                ["Content-Type"] = "application/json",
-                -- ["Authorization"] = "Bearer ${api_key}",
-              },
-              parameters = {
-                sync = true,
-              },
-            })
-          end,
-        },
-        strategies = {
-          chat = {
-            adapter = "ollama",
-          },
-          inline = {
-            adapter = "ollama",
-          },
-        },
-      })
-    end,
   },
-  {
-    "milanglacier/minuet-ai.nvim",
-    dependencies = {
-      { "nvim-lua/plenary.nvim" },
-      { "hrsh7th/nvim-cmp" },
-    },
-    config = function()
-      require("minuet").setup({
-        provider = "openai_fim_compatible",
-        n_completions = 1, -- recommend for local model for resource saving
-        -- I recommend beginning with a small context window size and incrementally
-        -- expanding it, depending on your local computing power. A context window
-        -- of 512, serves as an good starting point to estimate your computing
-        -- power. Once you have a reliable estimate of your local computing power,
-        -- you should adjust the context window to a larger value.
-        context_window = 512,
-        provider_options = {
-          openai_fim_compatible = {
-            -- For Windows users, TERM may not be present in environment variables.
-            -- Consider using APPDATA instead.
-            api_key = "TERM",
-            name = "Ollama",
-            end_point = "http://local.services.com:11434/v1/completions",
-            model = "deepseek-coder-v2",
-            optional = {
-              max_tokens = 56,
-              top_p = 0.9,
-            },
+  dependencies = {
+    "nvim-lua/plenary.nvim",
+    "MunifTanjim/nui.nvim",
+    --- The below dependencies are optional,
+    "echasnovski/mini.pick", -- for file_selector provider mini.pick
+    "nvim-telescope/telescope.nvim", -- for file_selector provider telescope
+    "hrsh7th/nvim-cmp", -- autocompletion for avante commands and mentions
+    "ibhagwan/fzf-lua", -- for file_selector provider fzf
+    "stevearc/dressing.nvim", -- for input provider dressing
+    "folke/snacks.nvim", -- for input provider snacks
+    "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
+    "zbirenbaum/copilot.lua", -- for providers='copilot'
+    {
+      -- support for image pasting
+      "HakonHarnes/img-clip.nvim",
+      event = "VeryLazy",
+      opts = {
+        -- recommended settings
+        default = {
+          embed_image_as_base64 = false,
+          prompt_for_file_name = false,
+          drag_and_drop = {
+            insert_mode = true,
           },
+          -- required for Windows users
+          use_absolute_path = true,
         },
-        presets = {
-          preset_1 = {
-            -- Configuration for local model with smaller context window
-            provider = "openai_fim_compatible",
-            context_window = 512,
-            throttle = 400,
-            debounce = 100,
-            provider_options = {
-              openai_fim_compatible = {
-                api_key = "TERM",
-                name = "Ollama",
-                end_point = "http://local.services.com:11434/v1/completions",
-                model = "deepseek-coder-v2",
-                optional = {
-                  max_tokens = 256,
-                  top_p = 0.9,
-                },
-              },
-            },
-          },
-        },
-      })
-    end,
-  },
-  {
-    "hrsh7th/nvim-cmp",
-    version = false, -- last release is way too old
-    event = "InsertEnter",
-    dependencies = {
-      "hrsh7th/cmp-nvim-lsp",
-      "hrsh7th/cmp-buffer",
-      "hrsh7th/cmp-path",
+      },
     },
-    -- Not all LSP servers add brackets when completing a function.
-    -- To better deal with this, LazyVim adds a custom option to cmp,
-    -- that you can configure. For example:
-    --
-    -- ```lua
-    -- opts = {
-    --   auto_brackets = { "python" }
-    -- }
-    -- ```
-    opts = function()
-      vim.api.nvim_set_hl(0, "CmpGhostText", { link = "Comment", default = true })
-      local cmp = require("cmp")
-      local defaults = require("cmp.config.default")()
-      local auto_select = true
-      return {
-        auto_brackets = {}, -- configure any filetype to auto add brackets
-        completion = {
-          completeopt = "menu,menuone,noinsert" .. (auto_select and "" or ",noselect"),
-        },
-        preselect = auto_select and cmp.PreselectMode.Item or cmp.PreselectMode.None,
-        mapping = cmp.mapping.preset.insert({
-          ["<C-b>"] = cmp.mapping.scroll_docs(-4),
-          ["<C-f>"] = cmp.mapping.scroll_docs(4),
-          ["<C-n>"] = cmp.mapping.select_next_item({ behavior = cmp.SelectBehavior.Insert }),
-          ["<C-p>"] = cmp.mapping.select_prev_item({ behavior = cmp.SelectBehavior.Insert }),
-          ["<C-Space>"] = cmp.mapping.complete(),
-          ["<CR>"] = LazyVim.cmp.confirm({ select = auto_select }),
-          ["<C-y>"] = LazyVim.cmp.confirm({ select = true }),
-          ["<S-CR>"] = LazyVim.cmp.confirm({ behavior = cmp.ConfirmBehavior.Replace }), -- Accept currently selected item. Set `select` to `false` to only confirm explicitly selected items.
-          ["<C-CR>"] = function(fallback)
-            cmp.abort()
-            fallback()
-          end,
-          ["<tab>"] = function(fallback)
-            return LazyVim.cmp.map({ "snippet_forward", "ai_accept" }, fallback)()
-          end,
-        }),
-        sources = cmp.config.sources({
-          { name = "minuet" },
-          { name = "lazydev" },
-          { name = "nvim_lsp" },
-          { name = "path" },
-        }, {
-          { name = "buffer" },
-        }),
-        formatting = {
-          format = function(entry, item)
-            local icons = LazyVim.config.icons.kinds
-            if icons[item.kind] then
-              item.kind = icons[item.kind] .. item.kind
-            end
-
-            local widths = {
-              abbr = vim.g.cmp_widths and vim.g.cmp_widths.abbr or 40,
-              menu = vim.g.cmp_widths and vim.g.cmp_widths.menu or 30,
-            }
-
-            for key, width in pairs(widths) do
-              if item[key] and vim.fn.strdisplaywidth(item[key]) > width then
-                item[key] = vim.fn.strcharpart(item[key], 0, width - 1) .. "…"
-              end
-            end
-
-            return item
-          end,
-        },
-        experimental = {
-          -- only show ghost text when we show ai completions
-          ghost_text = vim.g.ai_cmp and {
-            hl_group = "CmpGhostText",
-          } or false,
-        },
-        sorting = defaults.sorting,
-      }
-    end,
-    main = "lazyvim.util.cmp",
+    {
+      -- Make sure to set this up properly if you have lazy=true
+      'MeanderingProgrammer/render-markdown.nvim',
+      opts = {
+        file_types = { "markdown", "Avante" },
+      },
+      ft = { "markdown", "Avante" },
+    },
   },
 }
