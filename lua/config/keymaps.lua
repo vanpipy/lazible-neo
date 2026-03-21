@@ -4,8 +4,9 @@
 
 local map = LazyVim.safe_keymap_set
 
-map("n", "gl", "$", { desc = "go last end the line" })
+map("n", "K", vim.diagnostic.open_float, { desc = "Line Diagnostics" })
 map("n", "ga", "^", { desc = "go ahead end the line" })
+map("n", "gl", "$", { desc = "go last end the line" })
 
 -- This file is automatically loaded by lazyvim.config.init
 
