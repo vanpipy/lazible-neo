@@ -134,9 +134,6 @@ return {
       win = {
         position = "right",
         enter = true,
-        on_win = function(win)
-          require("opencode.terminal").setup(win.win)
-        end,
       },
     }
     
