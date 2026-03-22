@@ -94,40 +94,55 @@ return {
 
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
     vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-chat"
-    vim.g.opencode_cmd_current = build_cmd(vim.g.opencode_model_default)
+    vim.g.opencode_model_current = vim.g.opencode_model_default
+    vim.g.opencode_cmd_current = build_cmd(vim.g.opencode_model_current)
 
-    vim.g.opencode_snacks_terminal_opts = {
-      cwd = root_dir(),
-      win = {
-        position = "right",
-        enter = true,
-        on_win = function(win)
-          require("opencode.terminal").setup(win.win)
-        end,
-      },
-    }
-    local env = {}
-    local project_config_path = root_dir() .. "/opencode.json"
-    if vim.fn.filereadable(project_config_path) == 1 then
-      env.OPENCODE_CONFIG = project_config_path
-      if should_use_wsl() then
-        env.OPENCODE_CONFIG = win_to_wsl_path(project_config_path) or env.OPENCODE_CONFIG
-      end
-    end
-    if not env.OPENCODE_CONFIG then
-      local default_config_path = vim.fn.stdpath("config") .. "/opencode.json"
-      if vim.fn.filereadable(default_config_path) == 1 then
-        env.OPENCODE_CONFIG = default_config_path
+    local function build_terminal_opts()
+      local root = root_dir()
+      local opts = {
+        cwd = root,
+        win = {
+          position = "right",
+          enter = true,
+          on_win = function(win)
+            require("opencode.terminal").setup(win.win)
+          end,
+        },
+      }
+
+      local env = {}
+      local project_config_path = root .. "/opencode.json"
+      if vim.fn.filereadable(project_config_path) == 1 then
+        env.OPENCODE_CONFIG = project_config_path
         if should_use_wsl() then
-          env.OPENCODE_CONFIG = win_to_wsl_path(default_config_path) or env.OPENCODE_CONFIG
+          env.OPENCODE_CONFIG = win_to_wsl_path(project_config_path) or env.OPENCODE_CONFIG
         end
       end
+      if not env.OPENCODE_CONFIG then
+        local default_config_path = vim.fn.stdpath("config") .. "/opencode.json"
+        if vim.fn.filereadable(default_config_path) == 1 then
+          env.OPENCODE_CONFIG = default_config_path
+          if should_use_wsl() then
+            env.OPENCODE_CONFIG = win_to_wsl_path(default_config_path) or env.OPENCODE_CONFIG
+          end
+        end
+      end
+      if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
+        env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
+      end
+      if next(env) ~= nil then
+        opts.env = env
+      end
+
+      return opts
     end
-    if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
-      env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
-    end
-    if next(env) ~= nil then
-      vim.g.opencode_snacks_terminal_opts.env = env
+
+    vim.g.opencode_snacks_terminal_opts = build_terminal_opts()
+
+    local function refresh(model)
+      vim.g.opencode_model_current = model
+      vim.g.opencode_cmd_current = build_cmd(model)
+      vim.g.opencode_snacks_terminal_opts = build_terminal_opts()
     end
 
     vim.g.opencode_restart_with_model = function(model)
@@ -143,8 +158,8 @@ return {
         term:close()
       end
 
-      vim.g.opencode_cmd_current = build_cmd(model)
-      snacks_terminal.open(vim.g.opencode_cmd_current, opts)
+      refresh(model)
+      snacks_terminal.open(vim.g.opencode_cmd_current, vim.g.opencode_snacks_terminal_opts)
     end
 
     vim.g.opencode_opts = {
@@ -156,6 +171,7 @@ return {
           if not ok_term then
             return
           end
+          refresh(vim.g.opencode_model_current)
           snacks_terminal.open(vim.g.opencode_cmd_current, vim.g.opencode_snacks_terminal_opts)
         end,
         stop = function()
@@ -173,7 +189,13 @@ return {
           if not ok_term then
             return
           end
-          snacks_terminal.toggle(vim.g.opencode_cmd_current, vim.g.opencode_snacks_terminal_opts)
+          local existing = snacks_terminal.get(vim.g.opencode_cmd_current, vim.g.opencode_snacks_terminal_opts)
+          if existing then
+            existing:close()
+            return
+          end
+          refresh(vim.g.opencode_model_current)
+          snacks_terminal.open(vim.g.opencode_cmd_current, vim.g.opencode_snacks_terminal_opts)
         end,
       },
     }
