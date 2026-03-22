@@ -108,12 +108,24 @@ return {
       },
     }
   end,
+  config = function()
+    local ok_ctx, ctx = pcall(require, "opencode.context")
+    if ok_ctx and type(ctx.render) == "function" then
+      local orig = ctx.render
+      ctx.render = function(self, prompt, agents, ...)
+        if prompt == nil then
+          prompt = ""
+        end
+        return orig(self, prompt, agents, ...)
+      end
+    end
+  end,
   keys = {
     { "<leader>o", group = "opencode" },
-    { "<leader>oa", function() require("opencode").ask() end, desc = "Opencode Ask", mode = { "n", "v" } },
+    { "<leader>oa", function() require("opencode").ask("@this: ", { submit = true }) end, desc = "Opencode Ask", mode = { "n", "v" } },
     { "<leader>oo", function() require("opencode").toggle() end, desc = "Opencode Toggle" },
     { "<leader>os", function() require("opencode").select() end, desc = "Opencode Select" },
-    { "<leader>op", function() require("opencode").prompt() end, desc = "Opencode Prompt" },
+    { "<leader>op", function() require("opencode").select() end, desc = "Opencode Prompt" },
     { "<leader>oh", "<cmd>checkhealth opencode<cr>", desc = "Opencode Health" },
     { "<leader>oM", function() require("opencode").ask("/models", { submit = true }) end, desc = "Opencode Models" },
     { "<leader>oC", function() require("opencode").ask("/connect", { submit = true }) end, desc = "Opencode Connect" },
