@@ -8,3 +8,5 @@ vim.wo.relativenumber = false
 vim.g.autoformat = false
 
 vim.g.snacks_animate = false
+
+vim.g.loaded_python3_provider = 1
