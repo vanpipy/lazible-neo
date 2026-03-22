@@ -30,8 +30,6 @@ return {
   },
   init = function()
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
-    local log_level = vim.env.OPENCODE_LOG_LEVEL or "INFO"
-    local log_flags = ("--print-logs --log-level %s"):format(log_level)
 
     local function root_dir()
       local buf = vim.api.nvim_get_current_buf()
@@ -57,10 +55,15 @@ return {
     end
 
     local function build_cmd(model)
+      local cmd = ("opencode --port %d"):format(port)
       if model and model ~= "" then
-        return ("opencode --port %d --model %s %s"):format(port, model, log_flags)
+        cmd = ("%s --model %s"):format(cmd, model)
       end
-      return ("opencode --port %d %s"):format(port, log_flags)
+      if vim.env.OPENCODE_PRINT_LOGS == "1" then
+        local log_level = vim.env.OPENCODE_LOG_LEVEL or "INFO"
+        cmd = ("%s --print-logs --log-level %s"):format(cmd, log_level)
+      end
+      return cmd
     end
 
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
