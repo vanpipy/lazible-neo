@@ -52,6 +52,19 @@ return {
       return vim.fn.executable("wsl") == 1
     end
 
+    local function root_dir()
+      local ok_lv, lv = pcall(function()
+        return LazyVim
+      end)
+      if ok_lv and lv and type(lv.root) == "function" then
+        local r = lv.root()
+        if type(r) == "string" and r ~= "" then
+          return r
+        end
+      end
+      return vim.fn.getcwd()
+    end
+
     local function build_cmd(model)
       local use_wsl = should_use_wsl()
       local log_flags = "--print-logs --log-level WARN"
@@ -72,7 +85,7 @@ return {
         wsl_distro_flags = ("-d %s "):format(distro)
       end
 
-      local wsl_cwd = win_to_wsl_path(vim.fn.getcwd()) or "/"
+      local wsl_cwd = win_to_wsl_path(root_dir()) or "/"
       local bash_cmd = ("cd %s && %s"):format(wsl_cwd, base)
       return ("wsl.exe %s-- bash -lc '%s'"):format(wsl_distro_flags, bash_cmd:gsub("'", "'\\''"))
     end
@@ -82,6 +95,7 @@ return {
     vim.g.opencode_cmd_current = build_cmd(vim.g.opencode_model_default)
 
     vim.g.opencode_snacks_terminal_opts = {
+      cwd = root_dir(),
       win = {
         position = "right",
         enter = true,
@@ -90,15 +104,27 @@ return {
         end,
       },
     }
-    local config_path = vim.fn.stdpath("config") .. "/opencode.json"
-    if vim.fn.filereadable(config_path) == 1 then
-      local env = { OPENCODE_CONFIG = config_path }
+    local env = {}
+    local project_config_path = root_dir() .. "/opencode.json"
+    if vim.fn.filereadable(project_config_path) == 1 then
+      env.OPENCODE_CONFIG = project_config_path
       if should_use_wsl() then
-        env.OPENCODE_CONFIG = win_to_wsl_path(config_path) or env.OPENCODE_CONFIG
+        env.OPENCODE_CONFIG = win_to_wsl_path(project_config_path) or env.OPENCODE_CONFIG
       end
-      if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
-        env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
+    end
+    if not env.OPENCODE_CONFIG then
+      local default_config_path = vim.fn.stdpath("config") .. "/opencode.json"
+      if vim.fn.filereadable(default_config_path) == 1 then
+        env.OPENCODE_CONFIG = default_config_path
+        if should_use_wsl() then
+          env.OPENCODE_CONFIG = win_to_wsl_path(default_config_path) or env.OPENCODE_CONFIG
+        end
       end
+    end
+    if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
+      env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
+    end
+    if next(env) ~= nil then
       vim.g.opencode_snacks_terminal_opts.env = env
     end
 
