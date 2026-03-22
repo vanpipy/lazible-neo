@@ -37,7 +37,13 @@ function M.check()
     health.info(("port: %s"):format(tostring(port)))
   end
 
-  local project_cfg = vim.fs.find("opencode.json", { upward = true, type = "file" })[1]
+  local project_cfg
+  if vim.fs and vim.fs.find then
+    project_cfg = vim.fs.find("opencode.json", { upward = true, type = "file" })[1]
+  else
+    local found = vim.fn.findfile("opencode.json", ".;")
+    project_cfg = found ~= "" and found or nil
+  end
   if project_cfg then
     health.ok(("project config found: %s"):format(project_cfg))
   else
