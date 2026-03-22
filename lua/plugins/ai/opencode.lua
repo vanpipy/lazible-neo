@@ -29,29 +29,44 @@ return {
     },
   },
   init = function()
-    -- 基础配置
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
     local log_level = vim.env.OPENCODE_LOG_LEVEL or "DEBUG"
     
-    -- 构建启动命令（添加必要的参数）
+    -- 构建启动命令 - 使用 serve 子命令
     local function build_base_cmd()
       local cmd_parts = {
         "opencode",
+        "serve",  -- 关键：需要 serve 子命令才能使用 --port
         "--port", tostring(port),
         "--print-logs",
         "--log-level", log_level,
       }
       
-      -- 添加配置文件路径（确保读取正确的配置）
-      local config_path = os.getenv("HOME") .. "/.config/opencode/opencode.json"
-      if vim.fn.filereadable(config_path) == 1 then
-        table.insert(cmd_parts, "--config")
-        table.insert(cmd_parts, config_path)
+      -- 可选：指定 hostname
+      if vim.env.OPENCODE_HOSTNAME then
+        table.insert(cmd_parts, "--hostname")
+        table.insert(cmd_parts, vim.env.OPENCODE_HOSTNAME)
       end
       
       return cmd_parts
     end
     
+    -- 构建带模型的命令
+    local function build_cmd_with_model(model)
+      local cmd = build_base_cmd()
+      if model and model ~= "" then
+        table.insert(cmd, "--model")
+        table.insert(cmd, model)
+      end
+      return cmd
+    end
+    
+    -- 存储当前使用的模型和命令
+    vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT or ""
+    vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-v3.2"
+    vim.g.opencode_current_cmd = build_base_cmd()
+    
+    -- 工作目录
     local function root_dir()
       local buf = vim.api.nvim_get_current_buf()
       local name = vim.api.nvim_buf_get_name(buf)
@@ -75,21 +90,7 @@ return {
       return vim.fn.getcwd()
     end
     
-    -- 存储当前使用的模型和命令
-    vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT or ""
-    vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-v3.2"
-    vim.g.opencode_current_cmd = build_base_cmd()
-    
-    -- 构建带模型的命令
-    local function build_cmd_with_model(model)
-      local cmd = build_base_cmd()
-      if model and model ~= "" then
-        table.insert(cmd, "--model")
-        table.insert(cmd, model)
-      end
-      return cmd
-    end
-    
+    -- 终端配置
     vim.g.opencode_snacks_terminal_opts = {
       win = {
         position = "right",
@@ -110,7 +111,7 @@ return {
       return vim.g.opencode_term_opts
     end
     
-    -- 重启函数（切换模型）
+    -- 重启函数
     vim.g.opencode_restart_with_model = function(model)
       local ok_term, snacks_terminal = pcall(require, "snacks.terminal")
       if not ok_term then
@@ -129,7 +130,11 @@ return {
       vim.g.opencode_term_opts = nil
       
       -- 构建新命令
-      vim.g.opencode_current_cmd = build_cmd_with_model(model)
+      if model and model ~= "" then
+        vim.g.opencode_current_cmd = build_cmd_with_model(model)
+      else
+        vim.g.opencode_current_cmd = build_base_cmd()
+      end
       
       -- 打开新终端
       local success, err = pcall(function()
@@ -139,7 +144,9 @@ return {
       if not success then
         vim.notify("Failed to start opencode: " .. tostring(err), vim.log.levels.ERROR)
       else
-        vim.notify("Switched to model: " .. model, vim.log.levels.INFO)
+        if model and model ~= "" then
+          vim.notify("Switched to model: " .. model, vim.log.levels.INFO)
+        end
       end
     end
     
@@ -153,15 +160,6 @@ return {
           if not ok_term then
             vim.notify("snacks.nvim not available", vim.log.levels.ERROR)
             return
-          end
-          
-          -- 确保配置存在
-          local config_path = os.getenv("HOME") .. "/.config/opencode/opencode.json"
-          if vim.fn.filereadable(config_path) == 0 then
-            vim.notify(
-              "opencode.json not found at " .. config_path,
-              vim.log.levels.WARN
-            )
           end
           
           vim.g.opencode_term_opts = nil
@@ -192,7 +190,7 @@ return {
   config = function()
     vim.o.autoread = true
     
-    -- 安全包装 ask 函数，防止 nil prompt
+    -- 安全包装 ask 函数
     local ok_ctx, ctx = pcall(require, "opencode.context")
     if ok_ctx and type(ctx.render) == "function" then
       local orig = ctx.render
@@ -204,7 +202,7 @@ return {
       end
     end
     
-    -- 检查 opencode 是否可用
+    -- 检查 opencode
     local function check_opencode()
       if vim.fn.executable("opencode") == 0 then
         vim.notify(
@@ -214,10 +212,11 @@ return {
         return false
       end
       
-      local config_path = os.getenv("HOME") .. "/.config/opencode/opencode.json"
-      if vim.fn.filereadable(config_path) == 0 then
+      -- 测试 serve 命令是否可用
+      local result = vim.fn.system("opencode serve --help 2>&1")
+      if vim.v.shell_error ~= 0 then
         vim.notify(
-          "opencode.json not found at " .. config_path,
+          "opencode serve command not available. Please update opencode.",
           vim.log.levels.WARN
         )
       end
@@ -225,7 +224,6 @@ return {
       return true
     end
     
-    -- 延迟检查，避免影响启动速度
     vim.defer_fn(function()
       check_opencode()
     end, 1000)
@@ -248,7 +246,8 @@ return {
     { "<leader>o0", function() 
       vim.g.opencode_restart_with_model(vim.g.opencode_model_default) 
     end, desc = "Opencode Model: Default" },
-    { "<leader>ol", "<cmd>lua vim.g.opencode_restart_with_model('')<cr>", 
-      desc = "Opencode Reload" },
+    { "<leader>or", function() 
+      vim.g.opencode_restart_with_model(nil) 
+    end, desc = "Opencode Restart" },
   },
 }
