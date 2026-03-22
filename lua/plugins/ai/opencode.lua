@@ -30,10 +30,20 @@ return {
   },
   init = function()
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
-    local log_level = vim.env.OPENCODE_LOG_LEVEL or "WARN"
+    local log_level = vim.env.OPENCODE_LOG_LEVEL or "INFO"
     local log_flags = ("--print-logs --log-level %s"):format(log_level)
 
     local function root_dir()
+      local buf = vim.api.nvim_get_current_buf()
+      local name = vim.api.nvim_buf_get_name(buf)
+      if type(name) == "string" and name ~= "" then
+        local dir = vim.fs.dirname(name)
+        local root = vim.fs.root(dir, { ".git", "opencode.json" })
+        if type(root) == "string" and root ~= "" then
+          return root
+        end
+      end
+
       local ok_lv, lv = pcall(function()
         return LazyVim
       end)
@@ -56,6 +66,7 @@ return {
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
     vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-chat"
     vim.g.opencode_cmd_current = build_cmd(vim.g.opencode_model_default)
+    vim.g.opencode_term_opts = nil
 
     vim.g.opencode_snacks_terminal_opts = {
       win = {
@@ -68,8 +79,13 @@ return {
     }
 
     local function term_opts()
-      vim.g.opencode_snacks_terminal_opts.cwd = root_dir()
-      return vim.g.opencode_snacks_terminal_opts
+      if vim.g.opencode_term_opts ~= nil then
+        return vim.g.opencode_term_opts
+      end
+      vim.g.opencode_term_opts = vim.tbl_deep_extend("force", vim.g.opencode_snacks_terminal_opts, {
+        cwd = root_dir(),
+      })
+      return vim.g.opencode_term_opts
     end
 
     vim.g.opencode_restart_with_model = function(model)
@@ -83,6 +99,7 @@ return {
       if term then
         term:close()
       end
+      vim.g.opencode_term_opts = nil
       vim.g.opencode_cmd_current = build_cmd(model)
       snacks_terminal.open(vim.g.opencode_cmd_current, term_opts())
     end
@@ -96,6 +113,7 @@ return {
           if not ok_term then
             return
           end
+          vim.g.opencode_term_opts = nil
           snacks_terminal.open(vim.g.opencode_cmd_current, term_opts())
         end,
         stop = function()
@@ -107,6 +125,7 @@ return {
           if term then
             term:close()
           end
+          vim.g.opencode_term_opts = nil
         end,
         toggle = function()
           local ok_term, snacks_terminal = pcall(require, "snacks.terminal")
