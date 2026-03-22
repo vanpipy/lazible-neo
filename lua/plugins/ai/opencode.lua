@@ -50,6 +50,12 @@ return {
         end,
       },
     }
+    local config_path = vim.fn.stdpath("config") .. "/opencode.json"
+    if vim.fn.filereadable(config_path) == 1 then
+      vim.g.opencode_snacks_terminal_opts.env = {
+        OPENCODE_CONFIG = config_path,
+      }
+    end
 
     vim.g.opencode_restart_with_model = function(model)
       local ok_term, snacks_terminal = pcall(require, "snacks.terminal")
