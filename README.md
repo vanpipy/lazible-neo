@@ -56,8 +56,52 @@ Follow the [LazyVim](https://github.com/LazyVim/LazyVim) and [lazy.nvim](https:/
 
 ```bash
 git clone https://github.com/vanpipy/lazible-neo.git ~/.config/nvim
+```
 
-## Help LazyVim
-* Enable fzf plugin manually, then,
-* `sudo apt install luarocks fzf`
+## Help LazyVim (Subsystem / Kali / Debian)
+
+Some plugins rely on external binaries. On WSL/Kali/Debian-based systems, install:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  ripgrep fd-find \
+  build-essential \
+  luarocks \
+  ghostscript \
+  texlive-base texlive-binaries texlive-bibtex-extra biber latexmk \
+  zathura zathura-pdf-poppler \
+  lazygit
+```
+
+What these are for:
+
+- `ripgrep` / `fd-find`: required by Snacks picker for grep/file search
+- `build-essential`: Tree-sitter parsers and native plugins compilation
+- `luarocks`: LuaRocks for some Lua tooling/plugins that rely on external Lua modules
+- `ghostscript`: PDF utility used by parts of LaTeX/PDF toolchains
+- `texlive-base` / `texlive-binaries`: minimal LaTeX distribution and binaries
+- `texlive-bibtex-extra` / `biber`: bibliography toolchain (BibTeX styles + biblatex backend)
+- `latexmk`: VimTeX default compiler wrapper (recommended with `vimtex_compiler_method=latexmk`)
+- `zathura` / `zathura-pdf-poppler`: optional PDF viewer and backend for VimTeX on Linux
+- `lazygit`: optional TUI git client used by LazyVim git workflows
+
+Notes:
+
+- On Debian/Ubuntu, `fd-find` installs the `fdfind` binary. If `fd` is missing, create a symlink so pickers can use it:
+
+```bash
+sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+```
+
+Language extras (optional):
+
+- TypeScript / JavaScript: install `nodejs` + `npm` (Mason tools like tsserver/eslint/prettier need Node)
+- Python: install `python3` + `python3-venv`
+- Java: install `openjdk-17-jdk` (jdtls requires a JDK)
+
+Optional (clipboard integration inside subsystem):
+
+```bash
+sudo apt install -y xclip wl-clipboard
 ```
