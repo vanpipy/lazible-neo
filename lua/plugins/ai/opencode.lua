@@ -32,6 +32,7 @@ return {
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
     local log_level = vim.env.OPENCODE_LOG_LEVEL or "WARN"
     local log_flags = ("--print-logs --log-level %s"):format(log_level)
+
     local function root_dir()
       local ok_lv, lv = pcall(function()
         return LazyVim
@@ -55,16 +56,20 @@ return {
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
     vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-chat"
     vim.g.opencode_cmd_current = build_cmd(vim.g.opencode_model_default)
-    vim.g.opencode_term_opts_current = nil
 
-    local function current_term_opts()
-      if vim.g.opencode_term_opts_current ~= nil then
-        return vim.g.opencode_term_opts_current
-      end
-      vim.g.opencode_term_opts_current = vim.tbl_deep_extend("force", vim.g.opencode_snacks_terminal_opts or {}, {
-        cwd = root_dir(),
-      })
-      return vim.g.opencode_term_opts_current
+    vim.g.opencode_snacks_terminal_opts = {
+      win = {
+        position = "right",
+        enter = true,
+        on_win = function(win)
+          require("opencode.terminal").setup(win.win)
+        end,
+      },
+    }
+
+    local function term_opts()
+      vim.g.opencode_snacks_terminal_opts.cwd = root_dir()
+      return vim.g.opencode_snacks_terminal_opts
     end
 
     vim.g.opencode_restart_with_model = function(model)
@@ -73,14 +78,13 @@ return {
         return
       end
       local current_cmd = vim.g.opencode_cmd_current
-      local opts = current_term_opts()
+      local opts = term_opts()
       local term = snacks_terminal.get(current_cmd, opts)
       if term then
         term:close()
       end
       vim.g.opencode_cmd_current = build_cmd(model)
-      vim.g.opencode_term_opts_current = nil
-      snacks_terminal.open(vim.g.opencode_cmd_current, current_term_opts())
+      snacks_terminal.open(vim.g.opencode_cmd_current, term_opts())
     end
 
     vim.g.opencode_opts = {
@@ -92,15 +96,14 @@ return {
           if not ok_term then
             return
           end
-          vim.g.opencode_term_opts_current = nil
-          snacks_terminal.open(vim.g.opencode_cmd_current, current_term_opts())
+          snacks_terminal.open(vim.g.opencode_cmd_current, term_opts())
         end,
         stop = function()
           local ok_term, snacks_terminal = pcall(require, "snacks.terminal")
           if not ok_term then
             return
           end
-          local term = snacks_terminal.get(vim.g.opencode_cmd_current, current_term_opts())
+          local term = snacks_terminal.get(vim.g.opencode_cmd_current, term_opts())
           if term then
             term:close()
           end
@@ -110,23 +113,13 @@ return {
           if not ok_term then
             return
           end
-          vim.g.opencode_term_opts_current = nil
-          snacks_terminal.toggle(vim.g.opencode_cmd_current, current_term_opts())
-        end,
-      },
-    }
-
-    vim.g.opencode_snacks_terminal_opts = {
-      win = {
-        position = "right",
-        enter = true,
-        on_win = function(win)
-          require("opencode.terminal").setup(win.win)
+          snacks_terminal.toggle(vim.g.opencode_cmd_current, term_opts())
         end,
       },
     }
   end,
   config = function()
+    vim.o.autoread = true
     local ok_ctx, ctx = pcall(require, "opencode.context")
     if ok_ctx and type(ctx.render) == "function" then
       local orig = ctx.render
