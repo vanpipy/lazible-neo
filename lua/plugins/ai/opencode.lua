@@ -100,6 +100,7 @@ return {
     }
   end,
   keys = {
+    { "<leader>o", group = "opencode" },
     { "<leader>oa", function() require("opencode").ask() end, desc = "Opencode Ask", mode = { "n", "v" } },
     { "<leader>oo", function() require("opencode").toggle() end, desc = "Opencode Toggle" },
     { "<leader>os", function() require("opencode").select() end, desc = "Opencode Select" },
