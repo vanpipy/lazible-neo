@@ -70,11 +70,15 @@ return {
       local hostname = vim.env.OPENCODE_HOSTNAME or (use_wsl and "0.0.0.0" or "127.0.0.1")
       local log_level = vim.env.OPENCODE_LOG_LEVEL or "INFO"
       local log_flags = ("--print-logs --log-level %s"):format(log_level)
+      local opencode_bin = vim.fn.exepath("opencode")
+      if opencode_bin == "" then
+        opencode_bin = "opencode"
+      end
       local base
       if model and model ~= "" then
-        base = ("opencode --port %d --hostname %s --model %s %s"):format(port, hostname, model, log_flags)
+        base = ("%s --port %d --hostname %s --model %s %s"):format(opencode_bin, port, hostname, model, log_flags)
       else
-        base = ("opencode --port %d --hostname %s %s"):format(port, hostname, log_flags)
+        base = ("%s --port %d --hostname %s %s"):format(opencode_bin, port, hostname, log_flags)
       end
 
       if not use_wsl then
