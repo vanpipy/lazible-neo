@@ -30,12 +30,51 @@ return {
   },
   init = function()
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
-    local function build_cmd(model)
-      local log_flags = "--print-logs --log-level WARN"
-      if model and model ~= "" then
-        return ("opencode --port %d --model %s %s"):format(port, model, log_flags)
+    local function win_to_wsl_path(path)
+      if type(path) ~= "string" or path == "" then
+        return nil
       end
-      return ("opencode --port %d %s"):format(port, log_flags)
+      local p = path:gsub("\\", "/")
+      local drive, rest = p:match("^([A-Za-z]):/(.+)$")
+      if not drive then
+        return nil
+      end
+      return ("/mnt/%s/%s"):format(drive:lower(), rest)
+    end
+
+    local function should_use_wsl()
+      if vim.fn.has("win32") ~= 1 then
+        return false
+      end
+      if vim.fn.executable("opencode") == 1 then
+        return false
+      end
+      return vim.fn.executable("wsl") == 1
+    end
+
+    local function build_cmd(model)
+      local use_wsl = should_use_wsl()
+      local log_flags = "--print-logs --log-level WARN"
+      local base
+      if model and model ~= "" then
+        base = ("opencode --port %d --model %s %s"):format(port, model, log_flags)
+      else
+        base = ("opencode --port %d %s"):format(port, log_flags)
+      end
+
+      if not use_wsl then
+        return base
+      end
+
+      local distro = vim.env.OPENCODE_WSL_DISTRO
+      local wsl_distro_flags = ""
+      if distro and distro ~= "" then
+        wsl_distro_flags = ("-d %s "):format(distro)
+      end
+
+      local wsl_cwd = win_to_wsl_path(vim.fn.getcwd()) or "/"
+      local bash_cmd = ("cd %s && %s"):format(wsl_cwd, base)
+      return ("wsl.exe %s-- bash -lc '%s'"):format(wsl_distro_flags, bash_cmd:gsub("'", "'\\''"))
     end
 
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
@@ -54,6 +93,9 @@ return {
     local config_path = vim.fn.stdpath("config") .. "/opencode.json"
     if vim.fn.filereadable(config_path) == 1 then
       local env = { OPENCODE_CONFIG = config_path }
+      if should_use_wsl() then
+        env.OPENCODE_CONFIG = win_to_wsl_path(config_path) or env.OPENCODE_CONFIG
+      end
       if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
         env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
       end
