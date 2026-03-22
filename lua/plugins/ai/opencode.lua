@@ -31,10 +31,11 @@ return {
   init = function()
     local port = tonumber(vim.env.OPENCODE_PORT) or 4189
     local function build_cmd(model)
+      local log_flags = "--print-logs --log-level WARN"
       if model and model ~= "" then
-        return ("opencode --port %d --model %s"):format(port, model)
+        return ("opencode --port %d --model %s %s"):format(port, model, log_flags)
       end
-      return ("opencode --port %d"):format(port)
+      return ("opencode --port %d %s"):format(port, log_flags)
     end
 
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT
@@ -44,7 +45,7 @@ return {
     vim.g.opencode_snacks_terminal_opts = {
       win = {
         position = "right",
-        enter = false,
+        enter = true,
         on_win = function(win)
           require("opencode.terminal").setup(win.win)
         end,
@@ -52,9 +53,11 @@ return {
     }
     local config_path = vim.fn.stdpath("config") .. "/opencode.json"
     if vim.fn.filereadable(config_path) == 1 then
-      vim.g.opencode_snacks_terminal_opts.env = {
-        OPENCODE_CONFIG = config_path,
-      }
+      local env = { OPENCODE_CONFIG = config_path }
+      if vim.env.DEEPSEEK_API_KEY and vim.env.DEEPSEEK_API_KEY ~= "" then
+        env.DEEPSEEK_API_KEY = vim.env.DEEPSEEK_API_KEY
+      end
+      vim.g.opencode_snacks_terminal_opts.env = env
     end
 
     vim.g.opencode_restart_with_model = function(model)
