@@ -194,6 +194,14 @@ return {
       desc = "Opencode Fix Diagnostics" },
     { "<leader>or", function() require("opencode").ask("review @diff", { submit = true }) end,
       desc = "Opencode Review Diff" },
+    {
+      "<leader>ov",
+      function()
+        pcall(vim.cmd, "DiffviewOpen")
+        require("opencode").ask("review @diff", { submit = true })
+      end,
+      desc = "Opencode Review Diff (Diffview)",
+    },
     { "<leader>oq", function() require("opencode").ask("修复 @quickfix", { submit = true }) end,
       desc = "Opencode Fix Quickfix" },
     { "<leader>ob", function() require("opencode").ask("总结 @buffer", { submit = true }) end,
