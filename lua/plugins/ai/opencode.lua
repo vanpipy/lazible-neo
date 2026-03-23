@@ -195,6 +195,21 @@ return {
     { "<leader>or", function() require("opencode").ask("review @diff", { submit = true }) end,
       desc = "Opencode Review Diff" },
     {
+      "<leader>oc",
+      function()
+        require("opencode").ask(
+          "基于 @diff 写一个 Git commit message（Conventional Commits）。\n"
+            .. "要求：\n"
+            .. "- 第一行不超过 72 字符\n"
+            .. "- 格式：<type>(<scope>): <subject>\n"
+            .. "- 如有必要添加 body / footer（例如 BREAKING CHANGE / issue）\n"
+            .. "- 只输出 commit message，不要解释",
+          { submit = true }
+        )
+      end,
+      desc = "Opencode Commit Message (@diff)",
+    },
+    {
       "<leader>ov",
       function()
         pcall(vim.cmd, "DiffviewOpen")
