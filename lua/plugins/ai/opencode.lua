@@ -197,15 +197,153 @@ return {
     {
       "<leader>oc",
       function()
-        require("opencode").ask(
-          "Write a Git commit message based on @diff (Conventional Commits).\n"
-            .. "Requirements:\n"
-            .. "- Keep the first line under 72 characters\n"
-            .. "- Format: <type>(<scope>): <subject>\n"
-            .. "- Add a body/footer if needed (e.g. BREAKING CHANGE / issue)\n"
-            .. "- Output the commit message only (no explanations)",
-          { submit = true }
-        )
+        local function normalize_path(p)
+          p = vim.fs.normalize(p)
+          return (p:gsub("\\", "/"))
+        end
+
+        local function system_run(cmd, opts)
+          opts = opts or {}
+          if vim.system then
+            local proc = vim.system(cmd, { cwd = opts.cwd, text = true, stdin = opts.stdin })
+            local res = proc:wait()
+            return res
+          end
+          local cwd_before = vim.fn.getcwd()
+          if opts.cwd and opts.cwd ~= "" then
+            pcall(vim.fn.chdir, opts.cwd)
+          end
+          local ok, out = pcall(vim.fn.system, cmd, opts.stdin)
+          local code = vim.v.shell_error
+          pcall(vim.fn.chdir, cwd_before)
+          if not ok then
+            return { code = 1, stdout = "", stderr = tostring(out) }
+          end
+          return { code = code, stdout = tostring(out), stderr = "" }
+        end
+
+        local function git_root()
+          local ok_lv, root = pcall(function()
+            if LazyVim and LazyVim.root and LazyVim.root.git then
+              return LazyVim.root.git()
+            end
+          end)
+          if ok_lv and type(root) == "string" and root ~= "" then
+            return normalize_path(root)
+          end
+          local cwd = vim.fs.normalize((vim.uv or vim.loop).cwd() or ".")
+          local res = system_run({ "git", "rev-parse", "--show-toplevel" }, { cwd = cwd })
+          if type(res) == "table" and res.code == 0 and type(res.stdout) == "string" then
+            local line = (res.stdout:gsub("%s+$", ""))
+            if line ~= "" then
+              return normalize_path(line)
+            end
+          end
+          return nil
+        end
+
+        local function stage_all(root)
+          local res = system_run({ "git", "add", "-A" }, { cwd = root })
+          if type(res) ~= "table" or res.code ~= 0 then
+            vim.notify("git add -A failed", vim.log.levels.ERROR)
+          end
+        end
+
+        local function ask_to_update_commit_file(commit_file)
+          require("opencode").ask(
+            "Write a Git commit message based on @diff (Conventional Commits).\n"
+              .. "Requirements:\n"
+              .. "- Keep the first line under 72 characters\n"
+              .. "- Format: <type>(<scope>): <subject>\n"
+              .. "- Add a body/footer if needed (e.g. BREAKING CHANGE / issue)\n"
+              .. "- Output should be a commit message only (no explanations)\n"
+              .. "\n"
+              .. "Then update @" .. commit_file .. ":\n"
+              .. "- Replace only the actual commit message content (non-comment lines)\n"
+              .. "- Keep all comment lines starting with # unchanged\n"
+              .. "- Ensure the file begins with the new commit message\n",
+            { submit = true }
+          )
+        end
+
+        local root = git_root()
+        if not root then
+          vim.notify("not in a git repository", vim.log.levels.ERROR)
+          return
+        end
+        stage_all(root)
+
+        local dir = vim.fs.joinpath(vim.fn.stdpath("state"), "opencode")
+        vim.fn.mkdir(dir, "p")
+        local commit_file = vim.fs.joinpath(dir, ("COMMIT_EDITMSG_%s.txt"):format(tostring(os.time())))
+        vim.fn.writefile({}, commit_file)
+        commit_file = normalize_path(commit_file)
+
+        vim.cmd("tabnew " .. vim.fn.fnameescape(commit_file))
+        vim.bo.filetype = "gitcommit"
+        vim.bo.swapfile = false
+        vim.bo.bufhidden = "wipe"
+        vim.b.opencode_commit_root = root
+        vim.b.opencode_commit_file = commit_file
+        vim.b.opencode_commit_done = false
+        vim.b.opencode_commit_inflight = false
+
+        local bufnr = vim.api.nvim_get_current_buf()
+        local augroup = vim.api.nvim_create_augroup(("opencode_commit_%d"):format(bufnr), { clear = true })
+
+        vim.api.nvim_create_autocmd("BufWritePost", {
+          group = augroup,
+          buffer = bufnr,
+          callback = function()
+            if vim.b.opencode_commit_inflight == true or vim.b.opencode_commit_done == true then
+              return
+            end
+            vim.b.opencode_commit_inflight = true
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local out = {}
+            for _, l in ipairs(lines) do
+              if type(l) == "string" and not l:match("^%s*#") then
+                table.insert(out, l)
+              end
+            end
+            while #out > 0 and out[#out]:match("^%s*$") do
+              table.remove(out, #out)
+            end
+
+            local msg = table.concat(out, "\n"):gsub("%s+$", "")
+            if msg == "" then
+              vim.b.opencode_commit_inflight = false
+              vim.notify("commit message is empty", vim.log.levels.WARN)
+              return
+            end
+
+            local res = system_run({ "git", "commit", "-F", "-" }, { cwd = vim.b.opencode_commit_root, stdin = msg .. "\n" })
+            if type(res) == "table" and res.code == 0 then
+              vim.b.opencode_commit_done = true
+              vim.notify("git commit created", vim.log.levels.INFO)
+              pcall(vim.cmd, "tabclose")
+            else
+              local err = type(res) == "table" and ((res.stderr or "") .. (res.stdout or "")) or ""
+              vim.notify(("git commit failed\n%s"):format(err), vim.log.levels.ERROR)
+              vim.b.opencode_commit_inflight = false
+            end
+          end,
+        })
+
+        vim.api.nvim_create_autocmd("BufWipeout", {
+          group = augroup,
+          buffer = bufnr,
+          callback = function()
+            if vim.b.opencode_commit_done == true then
+              pcall(vim.fn.delete, vim.b.opencode_commit_file or "")
+              return
+            end
+            pcall(vim.fn.delete, vim.b.opencode_commit_file or "")
+          end,
+        })
+
+        ask_to_update_commit_file(commit_file)
       end,
       desc = "Opencode Commit Message (@diff)",
     },
