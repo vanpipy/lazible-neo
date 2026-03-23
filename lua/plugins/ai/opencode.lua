@@ -190,7 +190,7 @@ return {
     { "<leader>o", group = "opencode" },
     { "<leader>oa", function() require("opencode").ask("@this: ", { submit = true }) end, 
       desc = "Opencode Ask", mode = { "n", "v" } },
-    { "<leader>od", function() require("opencode").ask("修复 @diagnostics", { submit = true }) end,
+    { "<leader>od", function() require("opencode").ask("Fix @diagnostics", { submit = true }) end,
       desc = "Opencode Fix Diagnostics" },
     { "<leader>or", function() require("opencode").ask("review @diff", { submit = true }) end,
       desc = "Opencode Review Diff" },
@@ -198,12 +198,12 @@ return {
       "<leader>oc",
       function()
         require("opencode").ask(
-          "基于 @diff 写一个 Git commit message（Conventional Commits）。\n"
-            .. "要求：\n"
-            .. "- 第一行不超过 72 字符\n"
-            .. "- 格式：<type>(<scope>): <subject>\n"
-            .. "- 如有必要添加 body / footer（例如 BREAKING CHANGE / issue）\n"
-            .. "- 只输出 commit message，不要解释",
+          "Write a Git commit message based on @diff (Conventional Commits).\n"
+            .. "Requirements:\n"
+            .. "- Keep the first line under 72 characters\n"
+            .. "- Format: <type>(<scope>): <subject>\n"
+            .. "- Add a body/footer if needed (e.g. BREAKING CHANGE / issue)\n"
+            .. "- Output the commit message only (no explanations)",
           { submit = true }
         )
       end,
@@ -217,13 +217,13 @@ return {
       end,
       desc = "Opencode Review Diff (Diffview)",
     },
-    { "<leader>oq", function() require("opencode").ask("修复 @quickfix", { submit = true }) end,
+    { "<leader>oq", function() require("opencode").ask("Fix @quickfix", { submit = true }) end,
       desc = "Opencode Fix Quickfix" },
-    { "<leader>ob", function() require("opencode").ask("总结 @buffer", { submit = true }) end,
+    { "<leader>ob", function() require("opencode").ask("Summarize @buffer", { submit = true }) end,
       desc = "Opencode Summarize Buffer" },
-    { "<leader>oe", function() require("opencode").ask("解释 @this", { submit = true }) end,
+    { "<leader>oe", function() require("opencode").ask("Explain @this", { submit = true }) end,
       desc = "Opencode Explain", mode = { "n", "v" } },
-    { "<leader>ot", function() require("opencode").ask("为 @this 写单元测试", { submit = true }) end,
+    { "<leader>ot", function() require("opencode").ask("Write unit tests for @this", { submit = true }) end,
       desc = "Opencode Write Tests", mode = { "n", "v" } },
     { "<leader>oo", function() require("opencode").toggle() end, desc = "Opencode Toggle" },
     { "<leader>os", function() require("opencode").select() end, desc = "Opencode Select" },
