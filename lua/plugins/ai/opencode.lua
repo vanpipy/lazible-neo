@@ -190,6 +190,18 @@ return {
     { "<leader>o", group = "opencode" },
     { "<leader>oa", function() require("opencode").ask("@this: ", { submit = true }) end, 
       desc = "Opencode Ask", mode = { "n", "v" } },
+    { "<leader>od", function() require("opencode").ask("修复 @diagnostics", { submit = true }) end,
+      desc = "Opencode Fix Diagnostics" },
+    { "<leader>or", function() require("opencode").ask("review @diff", { submit = true }) end,
+      desc = "Opencode Review Diff" },
+    { "<leader>oq", function() require("opencode").ask("修复 @quickfix", { submit = true }) end,
+      desc = "Opencode Fix Quickfix" },
+    { "<leader>ob", function() require("opencode").ask("总结 @buffer", { submit = true }) end,
+      desc = "Opencode Summarize Buffer" },
+    { "<leader>oe", function() require("opencode").ask("解释 @this", { submit = true }) end,
+      desc = "Opencode Explain", mode = { "n", "v" } },
+    { "<leader>ot", function() require("opencode").ask("为 @this 写单元测试", { submit = true }) end,
+      desc = "Opencode Write Tests", mode = { "n", "v" } },
     { "<leader>oo", function() require("opencode").toggle() end, desc = "Opencode Toggle" },
     { "<leader>os", function() require("opencode").select() end, desc = "Opencode Select" },
     { "<leader>op", function() require("opencode").select() end, desc = "Opencode Prompt" },
@@ -204,7 +216,7 @@ return {
     { "<leader>o0", function() 
       vim.g.opencode_restart_with_model(vim.g.opencode_model_default) 
     end, desc = "Opencode Model: Default" },
-    { "<leader>or", function() 
+    { "<leader>oR", function() 
       vim.g.opencode_restart_with_model(nil) 
     end, desc = "Opencode Restart" },
   },
