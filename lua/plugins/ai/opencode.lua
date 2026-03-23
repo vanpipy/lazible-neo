@@ -162,6 +162,24 @@ return {
       end
     end
 
+    vim.api.nvim_create_autocmd("TermOpen", {
+      callback = function(args)
+        local buf = args.buf
+        if not buf or not vim.api.nvim_buf_is_valid(buf) then
+          return
+        end
+        local name = vim.api.nvim_buf_get_name(buf)
+        name = type(name) == "string" and name:lower() or ""
+        if not name:match("opencode") then
+          return
+        end
+        vim.keymap.set("t", "<C-h>", [[<C-\><C-n><C-w>h]], { buffer = buf, silent = true, noremap = true })
+        vim.keymap.set("t", "<C-j>", [[<C-\><C-n><C-w>j]], { buffer = buf, silent = true, noremap = true })
+        vim.keymap.set("t", "<C-k>", [[<C-\><C-n><C-w>k]], { buffer = buf, silent = true, noremap = true })
+        vim.keymap.set("t", "<C-l>", [[<C-\><C-n><C-w>l]], { buffer = buf, silent = true, noremap = true })
+      end,
+    })
+
     vim.api.nvim_create_autocmd("VimLeavePre", {
       callback = function()
         pcall(stop_managed_server)
