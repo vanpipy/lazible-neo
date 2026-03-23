@@ -222,6 +222,31 @@ return {
           return { code = code, stdout = tostring(out), stderr = "" }
         end
 
+        local function system_run_async(cmd, opts, on_exit)
+          opts = opts or {}
+          if vim.system then
+            vim.system(
+              cmd,
+              {
+                cwd = opts.cwd,
+                text = true,
+                stdin = opts.stdin,
+                env = opts.env,
+              },
+              function(res)
+                vim.schedule(function()
+                  on_exit(res)
+                end)
+              end
+            )
+            return
+          end
+          vim.schedule(function()
+            local res = system_run(cmd, opts)
+            on_exit(res)
+          end)
+        end
+
         local function git_root()
           local ok_lv, root = pcall(function()
             if LazyVim and LazyVim.root and LazyVim.root.git then
@@ -249,8 +274,43 @@ return {
           end
         end
 
+        local function has_staged_changes(root)
+          local res = system_run({ "git", "diff", "--cached", "--quiet" }, { cwd = root })
+          if type(res) ~= "table" then
+            return nil
+          end
+          if res.code == 0 then
+            return false
+          end
+          if res.code == 1 then
+            return true
+          end
+          return nil
+        end
+
+        local function opencode_ask_submit(prompt)
+          local ok, opencode = pcall(require, "opencode")
+          if not ok then
+            vim.notify("opencode.nvim is not loaded", vim.log.levels.ERROR)
+            return
+          end
+
+          if type(opencode.start) == "function" then
+            pcall(opencode.start)
+          elseif type(opencode.toggle) == "function" then
+            pcall(opencode.toggle)
+          end
+
+          vim.defer_fn(function()
+            local ok_ask, err = pcall(opencode.ask, prompt, { submit = true })
+            if not ok_ask then
+              vim.notify(("opencode ask failed: %s"):format(tostring(err)), vim.log.levels.ERROR)
+            end
+          end, 300)
+        end
+
         local function ask_to_update_commit_file(commit_file)
-          require("opencode").ask(
+          opencode_ask_submit(
             "Write a Git commit message based on @diff (Conventional Commits).\n"
               .. "Requirements:\n"
               .. "- Keep the first line under 72 characters\n"
@@ -261,8 +321,7 @@ return {
               .. "Then update @" .. commit_file .. ":\n"
               .. "- Replace only the actual commit message content (non-comment lines)\n"
               .. "- Keep all comment lines starting with # unchanged\n"
-              .. "- Ensure the file begins with the new commit message\n",
-            { submit = true }
+              .. "- Ensure the file begins with the new commit message\n"
           )
         end
 
@@ -272,6 +331,12 @@ return {
           return
         end
         stage_all(root)
+
+        local staged = has_staged_changes(root)
+        if staged == false then
+          vim.notify("no staged changes to commit", vim.log.levels.WARN)
+          return
+        end
 
         local dir = vim.fs.joinpath(vim.fn.stdpath("state"), "opencode")
         vim.fn.mkdir(dir, "p")
@@ -318,16 +383,26 @@ return {
               return
             end
 
-            local res = system_run({ "git", "commit", "-F", "-" }, { cwd = vim.b.opencode_commit_root, stdin = msg .. "\n" })
-            if type(res) == "table" and res.code == 0 then
-              vim.b.opencode_commit_done = true
-              vim.notify("git commit created", vim.log.levels.INFO)
-              pcall(vim.cmd, "tabclose")
-            else
-              local err = type(res) == "table" and ((res.stderr or "") .. (res.stdout or "")) or ""
-              vim.notify(("git commit failed\n%s"):format(err), vim.log.levels.ERROR)
-              vim.b.opencode_commit_inflight = false
-            end
+            vim.notify("creating git commit...", vim.log.levels.INFO)
+            system_run_async(
+              { "git", "commit", "-F", "-" },
+              {
+                cwd = vim.b.opencode_commit_root,
+                stdin = msg .. "\n",
+                env = { GIT_TERMINAL_PROMPT = "0" },
+              },
+              function(res)
+                if type(res) == "table" and res.code == 0 then
+                  vim.b.opencode_commit_done = true
+                  vim.notify("git commit created", vim.log.levels.INFO)
+                  pcall(vim.cmd, "tabclose")
+                  return
+                end
+                local err = type(res) == "table" and ((res.stderr or "") .. (res.stdout or "")) or ""
+                vim.notify(("git commit failed\n%s"):format(err), vim.log.levels.ERROR)
+                vim.b.opencode_commit_inflight = false
+              end
+            )
           end,
         })
 
