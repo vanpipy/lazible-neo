@@ -25,9 +25,9 @@ function M.check()
 
   local ok_term = pcall(require, "snacks.terminal")
   if ok_term then
-    health.ok("snacks.terminal is available (server integration enabled)")
+    health.ok("snacks.nvim is available (optional picker integration)")
   else
-    health.warn("snacks.terminal is not available (server integration disabled)", {
+    health.warn("snacks.nvim is not available (optional picker integration disabled)", {
       "Ensure folke/snacks.nvim is installed and enabled",
     })
   end
@@ -35,6 +35,45 @@ function M.check()
   local port = tonumber(vim.env.OPENCODE_PORT) or (vim.g.opencode_opts and vim.g.opencode_opts.port) or 4189
   if health.info then
     health.info(("port: %s"):format(tostring(port)))
+  end
+  if health.info then
+    health.info(("nvim_manage_server: %s"):format(tostring(vim.g.opencode_nvim_manage_server == true)))
+  end
+
+  local global_cfg = vim.fn.expand("~/.config/opencode/opencode.json")
+  if vim.fn.filereadable(global_cfg) == 1 then
+    health.ok(("global config found: %s"):format(global_cfg))
+  else
+    health.warn(("global config not found: %s"):format(global_cfg))
+  end
+
+  if vim.fn.executable("lsof") == 1 then
+    local pids = vim.fn.systemlist({ "lsof", "-nP", "-iTCP:" .. tostring(port), "-sTCP:LISTEN", "-t" })
+    if type(pids) == "table" and #pids > 0 then
+      local opencode_pid = nil
+      if vim.fn.executable("ps") == 1 then
+        for _, pid in ipairs(pids) do
+          local args = vim.fn.systemlist({ "ps", "-p", pid, "-o", "args=" })
+          local line = type(args) == "table" and args[1] or ""
+          if type(line) == "string" and line:match("opencode") then
+            opencode_pid = pid
+            break
+          end
+        end
+      end
+
+      if opencode_pid then
+        health.ok(("opencode server detected on port %s (pid %s)"):format(tostring(port), tostring(opencode_pid)))
+      else
+        health.warn(("port %s is in use, but it does not look like opencode"):format(tostring(port)))
+      end
+    else
+      health.warn(("no opencode server detected on port %s"):format(tostring(port)), {
+        ("Start it with: opencode --port %s"):format(tostring(port)),
+      })
+    end
+  else
+    health.warn("lsof not found; cannot verify whether the opencode port is in use")
   end
 
   local project_cfg
