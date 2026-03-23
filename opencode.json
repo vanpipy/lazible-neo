@@ -37,6 +37,30 @@
       "prompt": "You are an AI coding assistant running on DeepSeek (deepseek-chat) via an OpenAI-compatible API.\nWrite clean, efficient code with proper error handling.\nUse Chinese if the user's code comments are in Chinese, otherwise use English.",
       "temperature": 0.3
     },
+    "commit": {
+      "mode": "primary",
+      "model": "deepseek/deepseek-chat",
+      "prompt": "You generate Git commit messages.\n\nInput:\n- You are given the change as an attached git diff file.\n- Do NOT run any tools/commands (no git status/log/diff).\n\nOutput rules (strict):\n- Output ONLY the commit message text\n- First line MUST be: <type>(<scope>): <subject> (Conventional Commits)\n- Subject line under 72 characters\n- Optional body/footer only if needed\n- No explanation, no analysis, no markdown, no code fences",
+      "temperature": 0.1,
+      "tools": {
+        "bash": false,
+        "read": false,
+        "write": false,
+        "edit": false,
+        "glob": false,
+        "grep": false,
+        "list": false,
+        "webfetch": false,
+        "task": false,
+        "todowrite": false,
+        "skill": false
+      },
+      "permission": {
+        "bash": "deny",
+        "read": "deny",
+        "edit": "deny"
+      }
+    },
     "plan": {
       "mode": "primary",
       "model": "deepseek/deepseek-chat",
