@@ -31,6 +31,124 @@ return {
   init = function()
     vim.g.opencode_model_default = vim.env.OPENCODE_MODEL_DEFAULT or ""
     vim.g.opencode_model_deepseek = vim.env.OPENCODE_MODEL_DEEPSEEK or "deepseek/deepseek-chat"
+    vim.g.opencode_tmux_target_pane = vim.g.opencode_tmux_target_pane or ""
+
+    vim.g.opencode_tmux_send = function(text)
+      if type(text) ~= "string" then
+        return false
+      end
+      text = text:gsub("\r\n", "\n"):gsub("\n", " "):gsub("%s+$", "")
+      if text == "" then
+        return false
+      end
+      if vim.env.TMUX == nil or vim.env.TMUX == "" then
+        return false
+      end
+      if vim.fn.executable("tmux") ~= 1 then
+        return false
+      end
+
+      local function syslist(cmd)
+        local ok, out = pcall(vim.fn.systemlist, cmd)
+        if not ok or type(out) ~= "table" then
+          return nil
+        end
+        return out
+      end
+
+      local explicit = vim.env.OPENCODE_TMUX_PANE
+      if type(explicit) == "string" and explicit ~= "" then
+        pcall(vim.fn.system, { "tmux", "send-keys", "-t", explicit, "-l", text })
+        pcall(vim.fn.system, { "tmux", "send-keys", "-t", explicit, "Enter" })
+        return true
+      end
+
+      local cur_pane = (syslist({ "tmux", "display-message", "-p", "#{pane_id}" }) or {})[1]
+      local cur_win = (syslist({ "tmux", "display-message", "-p", "#{session_name}:#{window_index}" }) or {})[1]
+      if type(cur_win) ~= "string" or cur_win == "" then
+        return false
+      end
+
+      local cached = vim.g.opencode_tmux_target_pane
+      if type(cached) == "string" and cached ~= "" and cached ~= cur_pane then
+        pcall(vim.fn.system, { "tmux", "display-message", "-p", "-t", cached, "#{pane_id}" })
+        if vim.v.shell_error == 0 then
+          pcall(vim.fn.system, { "tmux", "send-keys", "-t", cached, "-l", text })
+          pcall(vim.fn.system, { "tmux", "send-keys", "-t", cached, "Enter" })
+          return true
+        end
+      end
+
+      local panes = syslist({
+        "tmux",
+        "list-panes",
+        "-t",
+        cur_win,
+        "-F",
+        "#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_start_command}",
+      })
+      if type(panes) ~= "table" or #panes == 0 then
+        return false
+      end
+
+      local candidates = {}
+      for _, l in ipairs(panes) do
+        local parts = vim.split(l, "\t", { plain = true })
+        local pid = parts[1]
+        local active = parts[2]
+        local cmd = (parts[3] or ""):lower()
+        local title = (parts[4] or ""):lower()
+        local start = (parts[5] or ""):lower()
+        if type(pid) == "string" and pid ~= "" and pid ~= cur_pane and active == "0" then
+          table.insert(candidates, { pid = pid, cmd = cmd, title = title, start = start })
+        end
+      end
+
+      local function pick()
+        for _, c in ipairs(candidates) do
+          if c.cmd:match("opencode") then
+            return c.pid
+          end
+        end
+        for _, c in ipairs(candidates) do
+          if c.title:match("opencode") or c.title:match("kanban") then
+            return c.pid
+          end
+        end
+        for _, c in ipairs(candidates) do
+          if c.start:match("opencode") or c.start:match("kanban") then
+            return c.pid
+          end
+        end
+        if #candidates == 1 then
+          return candidates[1].pid
+        end
+        return nil
+      end
+
+      local target = pick()
+      if type(target) ~= "string" or target == "" then
+        return false
+      end
+      vim.g.opencode_tmux_target_pane = target
+      pcall(vim.fn.system, { "tmux", "send-keys", "-t", target, "-l", text })
+      pcall(vim.fn.system, { "tmux", "send-keys", "-t", target, "Enter" })
+      return true
+    end
+
+    vim.g.opencode_send = function(prompt, opts)
+      local f = vim.g.opencode_tmux_send
+      if type(f) == "function" and f(prompt) then
+        return true
+      end
+      local ok, opencode = pcall(require, "opencode")
+      if not ok or type(opencode.ask) ~= "function" then
+        return false
+      end
+      local ok_ask = pcall(opencode.ask, prompt, opts or { submit = true })
+      return ok_ask == true
+    end
+
     vim.g.opencode_restart_with_model = function(_)
       local ok, opencode = pcall(require, "opencode")
       if not ok then
@@ -210,11 +328,26 @@ return {
   end,
   keys = {
     { "<leader>o", group = "opencode" },
-    { "<leader>oa", function() require("opencode").ask("@this: ", { submit = true }) end, 
-      desc = "Opencode Ask", mode = { "n", "v" } },
-    { "<leader>od", function() require("opencode").ask("Fix @diagnostics", { submit = true }) end,
+    {
+      "<leader>oa",
+      function()
+        vim.ui.input({ prompt = "opencode> ", default = "@this: " }, function(input)
+          if type(input) ~= "string" or input == "" then
+            return
+          end
+          local f = vim.g.opencode_send
+          if type(f) == "function" and f(input, { submit = true }) then
+            return
+          end
+          vim.notify("failed to send prompt", vim.log.levels.WARN)
+        end)
+      end,
+      desc = "Opencode Ask",
+      mode = { "n", "v" },
+    },
+    { "<leader>od", function() (vim.g.opencode_send or function() end)("Fix @diagnostics", { submit = true }) end,
       desc = "Opencode Fix Diagnostics" },
-    { "<leader>or", function() require("opencode").ask("review @diff", { submit = true }) end,
+    { "<leader>or", function() (vim.g.opencode_send or function() end)("review @diff", { submit = true }) end,
       desc = "Opencode Review Diff" },
     {
       "<leader>oc",
@@ -744,25 +877,28 @@ return {
       "<leader>ov",
       function()
         pcall(vim.cmd, "DiffviewOpen")
-        require("opencode").ask("review @diff", { submit = true })
+        local f = vim.g.opencode_send
+        if type(f) == "function" then
+          f("review @diff", { submit = true })
+        end
       end,
       desc = "Opencode Review Diff (Diffview)",
     },
-    { "<leader>oq", function() require("opencode").ask("Fix @quickfix", { submit = true }) end,
+    { "<leader>oq", function() (vim.g.opencode_send or function() end)("Fix @quickfix", { submit = true }) end,
       desc = "Opencode Fix Quickfix" },
-    { "<leader>ob", function() require("opencode").ask("Summarize @buffer", { submit = true }) end,
+    { "<leader>ob", function() (vim.g.opencode_send or function() end)("Summarize @buffer", { submit = true }) end,
       desc = "Opencode Summarize Buffer" },
-    { "<leader>oe", function() require("opencode").ask("Explain @this", { submit = true }) end,
+    { "<leader>oe", function() (vim.g.opencode_send or function() end)("Explain @this", { submit = true }) end,
       desc = "Opencode Explain", mode = { "n", "v" } },
-    { "<leader>ot", function() require("opencode").ask("Write unit tests for @this", { submit = true }) end,
+    { "<leader>ot", function() (vim.g.opencode_send or function() end)("Write unit tests for @this", { submit = true }) end,
       desc = "Opencode Write Tests", mode = { "n", "v" } },
     { "<leader>oo", function() require("opencode").toggle() end, desc = "Opencode Toggle" },
     { "<leader>os", function() require("opencode").select() end, desc = "Opencode Select" },
     { "<leader>op", function() require("opencode").select() end, desc = "Opencode Prompt" },
     { "<leader>oh", "<cmd>checkhealth opencode<cr>", desc = "Opencode Health" },
-    { "<leader>oM", function() require("opencode").ask("/models", { submit = true }) end, 
+    { "<leader>oM", function() (vim.g.opencode_send or function() end)("/models", { submit = true }) end, 
       desc = "Opencode Models" },
-    { "<leader>oC", function() require("opencode").ask("/connect", { submit = true }) end, 
+    { "<leader>oC", function() (vim.g.opencode_send or function() end)("/connect", { submit = true }) end, 
       desc = "Opencode Connect" },
     { "<leader>oD", function() 
       vim.g.opencode_restart_with_model(vim.g.opencode_model_deepseek) 
