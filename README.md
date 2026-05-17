@@ -4,38 +4,6 @@ Follow the [LazyVim](https://github.com/LazyVim/LazyVim) and [lazy.nvim](https:/
 
 ## Features
 
-### AI (opencode.nvim)
-
-- Deep integration with `nickjvandyke/opencode.nvim` + `folke/snacks.nvim` terminal
-- Default server port: `4189` (config: [opencode.json](./opencode.json))
-- Optional: let Neovim manage the opencode server process (see `OPENCODE_NVIM_MANAGE_SERVER` below)
-- Keymaps:
-  - `<leader>oo` toggle opencode terminal
-  - `<leader>oa` ask `@this:` (normal/visual)
-  - `<leader>od` fix `@diagnostics`
-  - `<leader>or` review `@diff`
-  - `<leader>oq` fix `@quickfix`
-  - `<leader>ob` summarize `@buffer`
-  - `<leader>oe` explain `@this` (normal/visual)
-  - `<leader>ot` write unit tests for `@this` (normal/visual)
-  - `<leader>op` prompt (same as select)
-  - `<leader>os` select
-  - `<leader>oC` open `/connect`
-  - `<leader>oM` open `/models`
-  - `<leader>oD` open `/models` (model: DeepSeek label)
-  - `<leader>o0` open `/models` (model: Default label)
-  - `<leader>oR` open `/models` (restart)
-  - `<leader>oh` `:checkhealth opencode`
-- Terminal navigation (in opencode terminal buffer):
-  - `<C-h>/<C-j>/<C-k>/<C-l>` move between windows
-- Snacks picker integration:
-  - In the Snacks picker input, `<A-a>` sends current selection to opencode
-- Env vars:
-  - `DEEPSEEK_API_KEY` (used by [opencode.json](./opencode.json))
-  - `OPENCODE_PORT` (override default port)
-  - `OPENCODE_NVIM_MANAGE_SERVER=1` (start/stop opencode server from Neovim)
-  - `OPENCODE_MODEL_DEEPSEEK` / `OPENCODE_MODEL_DEFAULT` (override model names used by `<leader>oD` / `<leader>o0`)
-
 ### Academic Writing
 
 - LaTeX: `lervag/vimtex`
