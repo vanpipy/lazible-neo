@@ -1,26 +1,34 @@
--- LSP overrides for the general-purpose configuration.
+-- Language-specific LSP server configuration.
 --
--- `main` deliberately stays lightweight and free of Java tooling. Java
--- support lives on the `feat/java` branch, where the JDK helper and the
--- jdtls configuration are kept together.
+-- This branch (feat/java) targets Java workspaces only. The Python tooling is
+-- deliberately excluded so that mason-lspconfig's `automatic_enable` cannot
+-- re-enable `pyright`/`ruff` just because they happen to be installed in the
+-- shared mason package store.
 --
--- Removing `lazyvim.plugins.extras.lang.java` from `lazyvim.json` is not
--- enough on its own: mason-lspconfig automatically enables every server that
--- is installed locally, so a machine with jdtls already present in Mason
--- would still start it (and spawn a jdtls process) even though the extra is
--- gone. LazyVim honours `opts.servers.<name>.enabled = false` by adding the
--- server to Mason's automatic-enablement exclusion list, which is exactly
--- what we need here.
+-- Why this is needed: mason-lspconfig's `automatic_enable` enables every
+-- *installed* mason package, not just the ones the active extras request. The
+-- extras only control `ensure_installed` (what gets installed). Removing the
+-- Python extra from `lazyvim.json` therefore does NOT stop an already-installed
+-- `pyright` from being enabled and attaching to `.py` buffers.
 --
--- Keep this file in sync with the `feat/java` branch, where the same key is
--- flipped back to `true` together with the JDK setup.
+-- Setting `enabled = false` makes LazyVim add the server to mason's
+-- `automatic_enable.exclude` list, which is the supported way to opt out.
+--
+-- See docs/workspace-strategy.md for the benchmark that motivated this.
+
+---@type string[]
+local disabled_servers = { "pyright", "basedpyright", "ruff", "ruff_lsp" }
+
 return {
   {
     "neovim/nvim-lspconfig",
-    opts = {
-      servers = {
-        jdtls = { enabled = false },
-      },
-    },
+    opts = function(_, opts)
+      opts.servers = opts.servers or {}
+
+      for _, server in ipairs(disabled_servers) do
+        opts.servers[server] = opts.servers[server] or {}
+        opts.servers[server].enabled = false
+      end
+    end,
   },
 }
