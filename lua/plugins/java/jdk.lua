@@ -65,6 +65,19 @@ local known_jdk_homes = {
   "/usr/lib/jvm/java",
 }
 
+--- Glob patterns for JDK installations whose exact directory name is not
+--- predictable (sdkman version strings, distro package names, ...).
+--- Every match is probed, so a non-JDK directory is simply skipped.
+---@type string[]
+local jdk_glob_patterns = {
+  "$HOME/.sdkman/candidates/java/*",
+  "$HOME/.local/opt/jdk/*",
+  "/usr/lib/jvm/*",
+  "/usr/java/*",
+  "/opt/java/*",
+  "/Library/Java/JavaVirtualMachines/*/Contents/Home",
+}
+
 --- Expand a leading `$HOME` / `~` in a path.
 ---@param path string
 ---@return string
@@ -175,15 +188,34 @@ function M.find(min_version)
       return jdk
     end
   end
+
+  -- Fall back to globbing, so JDKs installed under a name we did not
+  -- anticipate are still found.
+  for _, pattern in ipairs(jdk_glob_patterns) do
+    local matches = vim.fn.glob(expand(pattern), true, true)
+    if type(matches) == "table" then
+      table.sort(matches)
+      for _, candidate in ipairs(matches) do
+        local jdk = probe(candidate)
+        if jdk and jdk.version >= min_version then
+          return jdk
+        end
+      end
+    end
+  end
+
   return nil
 end
 
 --- The JDK that runs jdtls. Must be 21+ for jdtls 1.58.
 ---@return JavaJdk?
 function M.runtime_jdk()
-  -- 1. explicit override
+  -- 1. explicit override, but only if it is actually new enough. An
+  --    override that is too old would make jdtls refuse to start
+  --    ("jdtls requires at least Java 21"), so it is ignored and the
+  --    normal discovery chain continues.
   local jdk = probe(vim.env.JDTLS_JAVA_HOME or "")
-  if jdk then
+  if jdk and jdk.version >= 21 then
     return jdk
   end
 
@@ -214,9 +246,11 @@ end
 --- The JDK that the project is compiled/analyzed against.
 ---@return JavaJdk?
 function M.project_jdk()
-  -- 1. explicit override
+  -- 1. explicit override, but only if it is a usable JDK (8+). An
+  --    override that is too old or not a JDK at all is ignored so the
+  --    normal discovery chain can still find a sane project JDK.
   local jdk = probe(vim.env.JAVA_PROJECT_HOME or "")
-  if jdk then
+  if jdk and jdk.version >= 8 then
     return jdk
   end
 
