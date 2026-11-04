@@ -117,8 +117,8 @@ honouring it would make jdtls refuse to start.
 
 ### Runtime naming
 
-`java.configuration.runtimes` requires each entry's `name` to come from a
-fixed enum. jdtls 1.60.0 ships this list:
+`java.configuration.runtimes` ships with a fixed enum of accepted names
+(`mason-schemas/lsp.json` in the installed jdtls, 1.60.0):
 
 ```
 JavaSE-1.8, JavaSE-9, JavaSE-10, ... JavaSE-21, ... JavaSE-26
@@ -126,9 +126,22 @@ JavaSE-1.8, JavaSE-9, JavaSE-10, ... JavaSE-21, ... JavaSE-26
 
 Note that Java 8 is `JavaSE-1.8`, **not** `JavaSE-8`. The name follows the
 `JAVA_VERSION` convention (`1.8.0_432`), where the major version for legacy
-releases is the second number. A name outside the enum is rejected by the
-server, which then falls back to its own detected JDKs and silently ignores
-the intended target.
+releases is the second number.
+
+The name is a **label, not a lookup key**. The server resolves the runtime
+by `path`. Measured on jdtls 1.60.0, the observable behaviour is identical
+for `JavaSE-1.8`, `JavaSE-8` and an entirely bogus name:
+
+| Runtime name | `List.of` (Java 9+) diagnosed as undefined | Shown by `java.vm.getAllInstalls` |
+|---|---|---|
+| `JavaSE-1.8` | yes | yes, as `JavaSE-1.8` |
+| `JavaSE-8` | yes | yes, as `JavaSE-8` |
+| `Totally-Bogus-Name` | yes | yes, as `Totally-Bogus-Name` |
+
+So a mismatched name is not a correctness bug on its own. The name is still
+kept accurate because the enum exists so that clients and tooling agree on
+a spelling, and because the name is what the user sees when they inspect the
+detected VMs.
 
 The same convention drives version detection in `jdk.lua`: a `release` file
 of `JAVA_VERSION="1.8.0_432"` yields major version 8, and
