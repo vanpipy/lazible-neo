@@ -353,30 +353,67 @@ diagnostics are.
 
 ### Measuring LSP attachment correctly
 
-The "clients" column above was measured in a **pty-backed** Neovim session,
-not with `nvim --headless`. This is not a detail. A headless Neovim never
-fires `VimEnter`, so `vim.v.vim_did_enter` stays 0, `did_filetype()` stays 0,
-and `vim.lsp.enable`'s FileType autocmd never fires for a buffer that was
-read during startup. The result is that **no server attaches at all**, and a
-headless probe reports `clients={}` for a file that a user opening the same
-file in a terminal gets `pyright` and `ruff` for.
+The "clients" column above was measured in a real Neovim session, with the
+file as its only argument, the way a user opens it. Two things about that
+measurement are not obvious, and both produced wrong answers before they were
+corrected.
 
-Three separate mistakes came out of this, and each one produced a
-plausible-looking wrong answer:
+**1. The probe must not block the event loop.**
 
-- Opening the file with `nvim -c "edit file.lua"` from the command line.
-  The buffer is read before filetype detection has run, so
-  `did_filetype()` is 0 and the servers never attach.
-- Driving the probe with `vim.wait` in a `-c "luafile ..."` command.
-  That command runs before `VimEnter`, and `VimEnter` is only fired once
-  the startup commands have returned, so the wait deadlocks.
-- Leaving `~/.local/share/nvim/mason/bin` off `PATH`. The servers are
-  installed there, so `pyright-langserver` and `ruff` are not found and
-  silently do not attach.
+A probe driven by `vim.wait(...)` inside a `-c "luafile ..."` command blocks
+the event loop for the whole wait. `VimEnter` is only fired once the startup
+commands have returned, and `vim.lsp.enable` only starts clients for
+pre-existing buffers after that, so nothing attaches and the probe reports
+`clients={}` for every file.
 
-A working measurement therefore needs a pty, the file opened after
-`VimEnter` has fired, and mason's `bin` directory on `PATH`. The
-`script(1)` command is not enough on its own, because it does not forward
+This has nothing to do with headless mode. A controlled 2x2 comparison of
+transport (headless vs pty) against probe style (blocking vs deferred), all
+four running the same configuration against the same `.py` file, gives:
+
+| Transport | Probe | `vim_did_enter` | Attached clients |
+|---|---|---|---|
+| headless | `vim.wait` | 0 | none |
+| pty | `vim.wait` | 0 | none |
+| headless | `vim.defer_fn` | 1 | `pyright`, `ruff` |
+| pty | `vim.defer_fn` | 1 | `pyright`, `ruff` |
+
+Headless and pty give the same answer in every row. The discriminator is
+whether the probe lets the event loop run. `vim.defer_fn` does, `vim.wait`
+does not. Note also that `did_filetype()` is 0 in the rows that work: it is
+not the signal to look at.
+
+**2. The probe must wait for the servers, not for a fixed short delay.**
+
+Servers do not all become ready at the same time. `bash-language-server`
+initialises tree-sitter before it answers `initialize`, and on this machine
+that takes about **ten seconds**. A probe that samples once after a few
+seconds therefore reports `bashls` as missing, even though it attaches
+correctly.
+
+The measurement below polls every two seconds until the set of attached
+clients has been stable for three consecutive samples, with a minimum window
+of 20 seconds and a hard limit of 45. The minimum window is not redundant:
+without it the probe stops at t=10s, exactly when `bashls` is about to
+attach, and reports it as missing. The samples are recorded, so a late attach
+is visible in the result:
+
+```
+t=02s clients=[]
+t=04s clients=[]
+t=06s clients=[]
+t=08s clients=[]
+t=10s clients=[]
+t=12s clients=[bashls]
+t=14s clients=[bashls]
+```
+
+A third mistake, unrelated to the probe: leaving
+`~/.local/share/nvim/mason/bin` off `PATH`. The servers are installed there,
+so `pyright-langserver` and `ruff` are not found and silently do not attach.
+
+A working measurement therefore needs a probe that keeps the event loop free
+and waits for the servers to settle, and mason's `bin` directory on `PATH`.
+The `script(1)` command is not enough on its own, because it does not forward
 stdin, and Neovim blocks on a "Press ENTER" prompt when the terminal does
 not answer its size query.
 
