@@ -388,7 +388,8 @@ Servers do not all become ready at the same time. `bash-language-server` needs
 **seven to fourteen seconds** to answer `initialize` on this machine, and it is
 the only server in the matrix that does. A probe that samples once after a few
 seconds therefore reports `bashls` as missing, even though it attaches
-correctly.
+correctly. The exact figure moves with how warm the Windows mount is, so
+treat any single number as a sample rather than a constant.
 
 The delay is **not** tree-sitter. `bash-language-server` 5.6.0 answers
 `initialize` from `out/cli.js`, which awaits `BashServer.initialize()`, which
@@ -406,17 +407,17 @@ measured in the same process, so the ratio is direct rather than inferred.
 The absolute numbers move with how warm the Windows mount is, which is why
 the ranges are wide.
 
-The scan walks `PATH` and `lstat`s every entry in every directory. On this
-machine `PATH` has 74 entries, 26 of them Windows-mounted under `/mnt/*`. The
-26 mounted directories hold 5870 children and cost 9.8 s combined; the 48
-native Linux directories hold 2202 children and cost 272 ms combined.
-`/mnt/c/Windows/system32` alone has 4864 children and accounts for most of
-the total, measuring 6.9-9.7 s across runs depending on how warm the mount
-is.
+The scan walks `PATH` and `lstat`s every entry in every directory. The
+`PATH` the server actually receives has 75 entries, 25 of them
+Windows-mounted under `/mnt/*`. The 25 mounted directories hold 5870 children
+and cost 9.7-13.0 s combined; the 45 native Linux directories hold 2228
+children and cost 201-281 ms combined. `/mnt/c/Windows/system32` alone has
+4864 children and accounts for most of the total, measuring 6.7-10.1 s
+across runs depending on how warm the mount is.
 
 The `lstat` per child is what costs, not the directory read. On
-`/mnt/c/Windows/system32`, `readdir` returns all 4864 names in 38-39 ms,
-while `lstat`ing each one takes 6.8-9.2 s, roughly 1.4-1.9 ms per call. The
+`/mnt/c/Windows/system32`, `readdir` returns all 4864 names in 24-42 ms,
+while `lstat`ing each one takes 6.7-10.0 s, roughly 1.4-2.1 ms per call. The
 directory is on a 9p/DrvFs mount, where every metadata lookup crosses into
 Windows.
 
@@ -439,11 +440,11 @@ this way:
 
 | Server | `initialize` with full `PATH` | with `/mnt/*` removed |
 |---|---|---|
-| `bashls` | **7.2-13.9 s** | 0.29-0.39 s |
-| `marksman` | 1.10-1.60 s | 1.13-1.17 s |
-| `yamlls` | 0.38-0.49 s | 0.32-0.35 s |
-| `pyright` | 0.16 s | 0.15 s |
-| `jdtls` (`feat/java`) | 3.39-4.40 s | 3.37-3.85 s |
+| `bashls` | **6.7-13.9 s** | 0.29-0.39 s |
+| `marksman` | 1.05-1.60 s | 1.05-1.28 s |
+| `yamlls` | 0.32-0.49 s | 0.31-0.35 s |
+| `pyright` | 0.15-0.18 s | 0.15-0.19 s |
+| `jdtls` (`feat/java`) | 3.19-4.40 s | 3.37-3.85 s |
 
 `jdtls` is measured with the command `feat/java` actually builds,
 `mason/bin/jdtls --java-executable=<JDK 21>/bin/java`. It is a JVM and does
@@ -459,10 +460,10 @@ and toggles the patch at runtime:
 
 | Patched server | `initialize` |
 |---|---|
-| `PATH` scan on | 9.7-10.3 s |
+| `PATH` scan on | 7.0-10.9 s |
 | `PATH` scan off | 0.18-0.22 s |
 | `PATH` scan off, again | 0.18-0.22 s |
-| `PATH` scan on, again | 9.7-10.3 s |
+| `PATH` scan on, again | 7.0-10.9 s |
 
 Only the `PATH` scan moves the number. The tree-sitter parser is still loaded
 and still parses in the patched runs; the parse tree for
@@ -471,18 +472,25 @@ and still parses in the patched runs; the parse tree for
 The measurement below polls every two seconds until the set of attached
 clients has been stable for three consecutive samples, with a minimum window
 of 20 seconds and a hard limit of 45. Both parts of that rule matter. Across
-46 measured sessions `bashls` attached at t=6s, t=8s, t=10s or t=12s (24
-sessions at t=8s, 17 at t=10s), so it is not attached yet when a probe stops
-at t=6s and only sometimes attached by t=10s.
+55 measured sessions `bashls` attached at t=6s, t=8s, t=10s or t=12s (27
+sessions at t=8s, 17 at t=10s, 10 at t=12s), so it is not attached yet when
+a probe stops at t=6s and only sometimes attached by t=10s.
 
 Each rule below was run repeatedly against the same real session:
 
 | Probe rule | Stops at | False negatives | Correct? |
 |---|---|---|---|
 | stability only, no minimum window | t=06s | 5 of 5 | no |
-| 10 s window, single sample | t=10s | 8 of 17 (47%) | no |
-| 10 s window, 2 stable samples | t=10-12s | 1 of 25 (4%) | unreliable |
-| 20 s window, 3 stable samples | t=20s | 0 of 13 | yes |
+| 10 s window, single sample | t=10s | 22 of 32 (69%) | no |
+| 10 s window, 2 stable samples | t=10-12s | 16 of 40 (40%) | no |
+| 20 s window, 3 stable samples | t=20s | 0 of 21 | yes |
+
+The false-negative rate depends on how warm the Windows mount is, because
+that moves the attach time. Early in a session the mount is warm and
+`bashls` tends to attach by t=8s or t=10s; later it is slower and attaches
+at t=12s or later. A 10 s rule therefore fails somewhere between 4% and 69%
+of the time depending on the moment it runs, which is exactly the property
+that makes it useless as a test. The 20 s window passes every run.
 
 The samples are recorded, so a late attach is visible in the result:
 
@@ -500,13 +508,13 @@ t=20s clients=[bashls]
 ```
 
 A 10 s cutoff is not a safe substitute for the window. Across the sessions
-measured above, `bashls` had attached by t=10s in 91% of them and by t=12s in
+measured above, `bashls` had attached by t=10s in 82% of them and by t=12s in
 all of them, so a probe that stops exactly at 10 s reports `bashls` missing
-in roughly one session in ten, and it will do so intermittently, which is the
-worst kind of failure for a test. The same trace under a 20 s window is
-stable. The 20 s window is what makes the measurement repeatable, and the
-margin is deliberate: the slowest observed attach was t=12s, and the window
-leaves another 8 s of headroom before it.
+in roughly one session in five, and the rate moves with how warm the mount
+is, which is the worst kind of failure for a test. The same trace under a 20 s
+window is stable. The 20 s window is what makes the measurement repeatable,
+and the margin is deliberate: the slowest observed attach was t=12s, and the
+window leaves another 8 s of headroom before it.
 
 A third mistake, unrelated to the probe: assuming the server needs mason's
 `bin` directory on the *shell* `PATH`. It does not. mason.nvim prepends that
