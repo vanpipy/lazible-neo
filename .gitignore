@@ -6,3 +6,7 @@ debug
 foo.*
 *.log
 data
+
+# Test harness scratch: the bootstrapped mini.nvim checkout, the config
+# sandbox symlink, and the per-suite working directories.
+tests/.deps/

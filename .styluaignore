@@ -1,0 +1,10 @@
+# Upstream refactoring.nvim's own test fixtures.
+#
+# These files are the ground truth for the refactoring suite: they are
+# upstream's inputs and upstream's expected outputs, copied byte for byte
+# from refactoring.nvim/tests/files. Reformatting them would break the
+# comparison against upstream's documented behaviour, so they are excluded
+# from StyLua.
+#
+# The rest of tests/ is the harness itself and is formatted normally.
+tests/fixtures/

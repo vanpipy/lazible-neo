@@ -279,16 +279,26 @@ take `main`'s version, since the plugin set is the same.
 
 The refactoring keymaps on `main` are covered by a mini.test suite that
 drives a real headless Neovim against the repo and asserts the resulting
-buffer content:
+buffer content. The harness lives in `tests/`, so a fresh clone can run it
+without any setup beyond having the plugins installed:
 
 ```bash
-cd /tmp/lazytest/rfvalidate
-bash run_tests.sh tests/test_refactoring.lua
-bash run_tests.sh tests/test_smoke.lua
+tests/run.sh
 ```
 
+To run a single suite:
+
+```bash
+tests/run.sh tests/suites/refactoring.lua
+tests/run.sh tests/suites/smoke.lua
+```
+
+The first run bootstraps `mini.nvim` into `tests/.deps/mini.nvim` at the
+commit pinned in `tests/mini.lock`. `tests/.deps/` is gitignored and holds
+all scratch state, so a run leaves the working tree clean.
+
 The harness reaches the repo through a symlink at `$XDG_CONFIG_HOME/nvim`.
-`run_tests.sh` recreates that symlink on every run and aborts if it does not
+`tests/run.sh` recreates that symlink on every run and aborts if it does not
 resolve to the repository, because a stale copy would silently validate the
 wrong configuration.
 
