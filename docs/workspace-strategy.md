@@ -367,8 +367,8 @@ limits of each one are explicit.
 | Dataset | What it measures | How it was produced | Size |
 |---|---|---|---|
 | A. Server `PATH` | the `PATH` a language server actually receives | captured from a real `vim.lsp.start()` spawn, not inferred from the shell | 72 entries |
-| B. Composition | the cost of the server's own `PATH` scan | the server's scan re-implemented exactly, over the full `PATH` and over the mounted-only and native-only subsets, each measured on its own | 3 scans |
-| C. Server round trips | a real `initialize` against the real server | a real LSP `initialize` frame over stdio to `bash-language-server` 5.6.0, with `PATH` overridden per run | 14 full, 11 trimmed, plus 4 patched toggle runs |
+| B. Composition | the cost of the server's own `PATH` scan | the server's scan re-implemented exactly, over the full `PATH`, the mounted-only and native-only subsets, and the three-step `system32` ladder, each measured on its own | 6 scans |
+| C. Server round trips | a real `initialize` against the real server | a real LSP `initialize` frame over stdio to `bash-language-server` 5.6.0, with `PATH` overridden per run | 32 against `bashls`: 14 full, 11 trimmed, 4 patched toggle runs, 3 for the `system32` ladder; 34 against `marksman`/`yamlls`/`pyright`; 24 against `jdtls` |
 | D. Attach sessions | when `bashls` attaches in a real editor | 40 real `nvim` sessions, each launched with a `.sh` file as its only argument, sampled every two seconds | 40 sessions |
 
 Three rules keep these datasets comparable, and all three were violated at some
