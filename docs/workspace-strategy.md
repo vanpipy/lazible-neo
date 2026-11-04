@@ -351,6 +351,35 @@ them, which is why the error case still reports `class_files=2`. The class
 file count is therefore not a measure of whether the build succeeded. The
 diagnostics are.
 
+### Measuring LSP attachment correctly
+
+The "clients" column above was measured in a **pty-backed** Neovim session,
+not with `nvim --headless`. This is not a detail. A headless Neovim never
+fires `VimEnter`, so `vim.v.vim_did_enter` stays 0, `did_filetype()` stays 0,
+and `vim.lsp.enable`'s FileType autocmd never fires for a buffer that was
+read during startup. The result is that **no server attaches at all**, and a
+headless probe reports `clients={}` for a file that a user opening the same
+file in a terminal gets `pyright` and `ruff` for.
+
+Three separate mistakes came out of this, and each one produced a
+plausible-looking wrong answer:
+
+- Opening the file with `nvim -c "edit file.lua"` from the command line.
+  The buffer is read before filetype detection has run, so
+  `did_filetype()` is 0 and the servers never attach.
+- Driving the probe with `vim.wait` in a `-c "luafile ..."` command.
+  That command runs before `VimEnter`, and `VimEnter` is only fired once
+  the startup commands have returned, so the wait deadlocks.
+- Leaving `~/.local/share/nvim/mason/bin` off `PATH`. The servers are
+  installed there, so `pyright-langserver` and `ruff` are not found and
+  silently do not attach.
+
+A working measurement therefore needs a pty, the file opened after
+`VimEnter` has fired, and mason's `bin` directory on `PATH`. The
+`script(1)` command is not enough on its own, because it does not forward
+stdin, and Neovim blocks on a "Press ENTER" prompt when the terminal does
+not answer its size query.
+
 ---
 
 ## Environment notes
