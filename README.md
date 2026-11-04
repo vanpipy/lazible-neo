@@ -79,7 +79,7 @@ Language extras (optional):
 
 - TypeScript / JavaScript: install `nodejs` + `npm` (Mason tools like tsserver/eslint/prettier need Node)
 - Python: install `python3` + `python3-venv`
-- Java: install `openjdk-17-jdk` (jdtls requires a JDK)
+- Go: install `golang` (the `gopls` language server needs a Go toolchain)
 
 Optional (clipboard integration inside subsystem):
 
