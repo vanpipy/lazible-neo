@@ -385,8 +385,8 @@ not the signal to look at.
 **2. The probe must wait for the servers, not for a fixed short delay.**
 
 Servers do not all become ready at the same time. `bash-language-server` needs
-**seven to ten seconds** to answer `initialize` on this machine, and it is the
-only server in the matrix that does. A probe that samples once after a few
+**seven to fourteen seconds** to answer `initialize` on this machine, and it is
+the only server in the matrix that does. A probe that samples once after a few
 seconds therefore reports `bashls` as missing, even though it attaches
 correctly.
 
@@ -396,35 +396,58 @@ does two expensive things in order:
 
 | Step | Cost on this machine |
 |---|---|
-| `initializeParser()`: `Parser.init()` + `Language.load(tree-sitter-bash.wasm)` | **15-19 ms** |
-| `Executables.fromPath(PATH)`: `lstat` on every child of every `PATH` directory | **9.7-9.9 s** |
+| `initializeParser()`: `Parser.init()` + `Language.load(tree-sitter-bash.wasm)` | **15-24 ms** |
+| `Executables.fromPath(PATH)`: `lstat` on every child of every `PATH` directory | **7-14 s** |
 
-The second step is 99.8% of the delay. It walks `PATH` and `lstat`s every
-entry in every directory, and on this machine `PATH` contains 26
-Windows-mounted directories under `/mnt/*`. `/mnt/c/Windows/system32` alone
-has 4864 children and costs about 9.6 s of the total; the 48 native Linux
-directories cost about 200 ms combined. The exact figure moves with how warm
-the Windows mount is: repeated fresh-process measurements of the whole
-`initialize` handshake gave 7.3 s to 9.5 s, and an isolated measurement of
-the scan alone gave 6.9 s to 8.2 s. A probe therefore has to allow for the
-slow end of that range.
+The second step is **99.8%** of the delay: across 10 cold fresh-process
+measurements the `PATH` scan accounted for 99.69% to 99.86% of the two
+steps combined, and tree-sitter for the remaining 0.14% to 0.31%. The two are
+measured in the same process, so the ratio is direct rather than inferred.
+The absolute numbers move with how warm the Windows mount is, which is why
+the ranges are wide.
+
+The scan walks `PATH` and `lstat`s every entry in every directory. On this
+machine `PATH` has 74 entries, 26 of them Windows-mounted under `/mnt/*`. The
+26 mounted directories hold 5870 children and cost 9.8 s combined; the 48
+native Linux directories hold 2202 children and cost 272 ms combined.
+`/mnt/c/Windows/system32` alone has 4864 children and accounts for most of
+the total, measuring 6.9-9.7 s across runs depending on how warm the mount
+is.
+
+The `lstat` per child is what costs, not the directory read. On
+`/mnt/c/Windows/system32`, `readdir` returns all 4864 names in 38-39 ms,
+while `lstat`ing each one takes 6.8-9.2 s, roughly 1.4-1.9 ms per call. The
+directory is on a 9p/DrvFs mount, where every metadata lookup crosses into
+Windows.
+
+This configuration does not trim `PATH` at all: nothing in `lua/` or
+`init.lua` removes entries from it, so the Windows mounts the shell exports
+reach the server unchanged. The only `PATH` edit anywhere in the stack is
+mason.nvim's, which prepends its own `bin` directory, and that adds one
+entry rather than removing any. The delay is therefore a property of the
+environment the server is launched into, not of this configuration, and it
+would disappear on a machine whose `PATH` has no Windows mounts in it.
 
 Tree-sitter has to be measured cold to get this right. `web-tree-sitter`
 memoises its `initPromise`, so calling `Parser.init()` first and timing a
-second `initializeParser()` reports 5-7 ms instead of the real 15-19 ms. Both
+second `initializeParser()` reports 5-7 ms instead of the real 15-24 ms. Both
 numbers are negligible next to the `PATH` scan, but the cold one is the
 honest one.
 
-This is a property of the machine, not of the server being lazy, and it is
-specific to `bashls`. No other server in the matrix scans `PATH` this way:
+It is also specific to `bashls`. No other server in the matrix scans `PATH`
+this way:
 
 | Server | `initialize` with full `PATH` | with `/mnt/*` removed |
 |---|---|---|
-| `bashls` | **7.3-9.5 s** | 0.29-0.39 s |
-| `marksman` | 1.08 s | 1.11 s |
-| `yamlls` | 0.32 s | 0.32 s |
-| `pyright` | 0.15 s | 0.16 s |
-| `jdtls` (`feat/java`) | 3.00 s | 3.23 s |
+| `bashls` | **7.2-13.9 s** | 0.29-0.39 s |
+| `marksman` | 1.10-1.60 s | 1.13-1.17 s |
+| `yamlls` | 0.38-0.49 s | 0.32-0.35 s |
+| `pyright` | 0.16 s | 0.15 s |
+| `jdtls` (`feat/java`) | 3.39-4.40 s | 3.37-3.85 s |
+
+`jdtls` is measured with the command `feat/java` actually builds,
+`mason/bin/jdtls --java-executable=<JDK 21>/bin/java`. It is a JVM and does
+not scan `PATH`, so the `/mnt/*` entries do not affect it either way.
 
 Adding only `/mnt/c/Windows/system32` back to a minimal `PATH` restores the
 full delay. So the useful conclusion is not "wait longer" but "the delay comes
@@ -436,10 +459,10 @@ and toggles the patch at runtime:
 
 | Patched server | `initialize` |
 |---|---|
-| `PATH` scan on | 9.9-10.1 s |
-| `PATH` scan off | 0.19 s |
-| `PATH` scan off, again | 0.19 s |
-| `PATH` scan on, again | 10.06-10.07 s |
+| `PATH` scan on | 9.7-10.3 s |
+| `PATH` scan off | 0.18-0.22 s |
+| `PATH` scan off, again | 0.18-0.22 s |
+| `PATH` scan on, again | 9.7-10.3 s |
 
 Only the `PATH` scan moves the number. The tree-sitter parser is still loaded
 and still parses in the patched runs; the parse tree for
@@ -447,15 +470,19 @@ and still parses in the patched runs; the parse tree for
 
 The measurement below polls every two seconds until the set of attached
 clients has been stable for three consecutive samples, with a minimum window
-of 20 seconds and a hard limit of 45. Both parts of that rule matter, because
-`bashls` attaches between t=10s and t=12s, right where the shorter rules stop:
+of 20 seconds and a hard limit of 45. Both parts of that rule matter. Across
+46 measured sessions `bashls` attached at t=6s, t=8s, t=10s or t=12s (24
+sessions at t=8s, 17 at t=10s), so it is not attached yet when a probe stops
+at t=6s and only sometimes attached by t=10s.
 
-| Probe rule | Stops at | Concludes | Correct? |
+Each rule below was run repeatedly against the same real session:
+
+| Probe rule | Stops at | False negatives | Correct? |
 |---|---|---|---|
-| stability only, no minimum window | t=06s | `clients=[]` | no |
-| 10 s window, 2 stable samples | t=10s | `clients=[]` | no |
-| 10 s window, single sample | t=10s | `clients=[]` | no |
-| 20 s window, 3 stable samples | t=20s | `clients={ "bashls" }` | yes |
+| stability only, no minimum window | t=06s | 5 of 5 | no |
+| 10 s window, single sample | t=10s | 8 of 17 (47%) | no |
+| 10 s window, 2 stable samples | t=10-12s | 1 of 25 (4%) | unreliable |
+| 20 s window, 3 stable samples | t=20s | 0 of 13 | yes |
 
 The samples are recorded, so a late attach is visible in the result:
 
@@ -467,22 +494,32 @@ t=08s clients=[]
 t=10s clients=[]
 t=12s clients=[bashls]
 t=14s clients=[bashls]
+t=16s clients=[bashls]
+t=18s clients=[bashls]
+t=20s clients=[bashls]
 ```
 
-A 10 s cutoff is not a safe substitute for the window. It is a coin flip:
-across repeated runs `bashls` appeared at t=10s in some runs and at t=12s in
-others, so a probe that stops exactly at 10 s reports `bashls` present or
-missing depending on timing. The same trace under a 20 s window is stable.
+A 10 s cutoff is not a safe substitute for the window. Across the sessions
+measured above, `bashls` had attached by t=10s in 91% of them and by t=12s in
+all of them, so a probe that stops exactly at 10 s reports `bashls` missing
+in roughly one session in ten, and it will do so intermittently, which is the
+worst kind of failure for a test. The same trace under a 20 s window is
+stable. The 20 s window is what makes the measurement repeatable, and the
+margin is deliberate: the slowest observed attach was t=12s, and the window
+leaves another 8 s of headroom before it.
 
-A third mistake, unrelated to the probe: leaving
-`~/.local/share/nvim/mason/bin` off `PATH`. The servers are installed there,
-so `pyright-langserver` and `ruff` are not found and silently do not attach.
+A third mistake, unrelated to the probe: assuming the server needs mason's
+`bin` directory on the *shell* `PATH`. It does not. mason.nvim prepends that
+directory to `vim.env.PATH` in `setup()`, so the server inherits it from
+Neovim. With mason's `bin` directory removed from the shell `PATH`,
+`exepath` still resolves `bash-language-server`, `pyright-langserver`,
+`ruff`, `taplo`, `marksman` and `yaml-language-server` to their mason
+installations, and `pyright` and `ruff` both attach on a `.py` file.
 
 A working measurement therefore needs a probe that keeps the event loop free
-and waits for the servers to settle, and mason's `bin` directory on `PATH`.
-The `script(1)` command is not enough on its own, because it does not forward
-stdin, and Neovim blocks on a "Press ENTER" prompt when the terminal does
-not answer its size query.
+and waits for the servers to settle. The `script(1)` command is not enough on
+its own, because it does not forward stdin, and Neovim blocks on a "Press
+ENTER" prompt when the terminal does not answer its size query.
 
 ---
 
@@ -496,6 +533,6 @@ not answer its size query.
   required.
 - `$PATH` contains 26 Windows-mounted directories under `/mnt/*`, because this
   is a WSL environment. `bash-language-server` `lstat`s every entry of every
-  `PATH` directory during `initialize`, which costs about ten seconds here and
-  is the reason `bashls` attaches so much later than every other server. See
+  `PATH` directory during `initialize`, which costs 7-14 s here and is the
+  reason `bashls` attaches so much later than every other server. See
   [Measuring LSP attachment correctly](#measuring-lsp-attachment-correctly).
