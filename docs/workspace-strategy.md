@@ -400,7 +400,7 @@ does two expensive things in order:
 | `initializeParser()`: `Parser.init()` + `Language.load(tree-sitter-bash.wasm)` | **15-24 ms** |
 | `Executables.fromPath(PATH)`: `lstat` on every child of every `PATH` directory | **7-14 s** |
 
-The second step is **99.8%** of the delay: across 10 cold fresh-process
+The second step is **99.8%** of the delay: across 18 cold fresh-process
 measurements the `PATH` scan accounted for 99.69% to 99.86% of the two
 steps combined, and tree-sitter for the remaining 0.14% to 0.31%. The two are
 measured in the same process, so the ratio is direct rather than inferred.
@@ -408,16 +408,20 @@ The absolute numbers move with how warm the Windows mount is, which is why
 the ranges are wide.
 
 The scan walks `PATH` and `lstat`s every entry in every directory. The
-`PATH` the server actually receives has 75 entries, 25 of them
-Windows-mounted under `/mnt/*`. The 25 mounted directories hold 5870 children
-and cost 9.7-13.0 s combined; the 45 native Linux directories hold 2228
-children and cost 201-281 ms combined. `/mnt/c/Windows/system32` alone has
-4864 children and accounts for most of the total, measuring 6.7-10.1 s
-across runs depending on how warm the mount is.
+`PATH` the server actually receives has 72 entries, 26 of them
+Windows-mounted under `/mnt/*`. Of those 72, the server scans the 25 mounted
+directories that are real directories; `/bin` and `/sbin` are symlinks, which
+`lstat` reports as non-directories, and three entries do not exist at all. The
+25 mounted directories hold 5870 children and cost 9.7-13.0 s combined. The 43
+native Linux directories the server scans hold 2163 children and cost 148-183
+ms when measured on their own, with no Windows mount competing for the same
+metadata traffic. `/mnt/c/Windows/system32` alone has 4864 children and
+accounts for most of the total, measuring 9.6-9.9 s across runs depending on
+how warm the mount is.
 
 The `lstat` per child is what costs, not the directory read. On
-`/mnt/c/Windows/system32`, `readdir` returns all 4864 names in 24-42 ms,
-while `lstat`ing each one takes 6.7-10.0 s, roughly 1.4-2.1 ms per call. The
+`/mnt/c/Windows/system32`, `readdir` returns all 4864 names in 43-52 ms,
+while `lstat`ing each one takes 9.6-9.9 s, roughly 2.0 ms per call. The
 directory is on a 9p/DrvFs mount, where every metadata lookup crosses into
 Windows.
 
@@ -441,8 +445,8 @@ this way:
 | Server | `initialize` with full `PATH` | with `/mnt/*` removed |
 |---|---|---|
 | `bashls` | **6.7-13.9 s** | 0.29-0.39 s |
-| `marksman` | 1.05-1.60 s | 1.05-1.28 s |
-| `yamlls` | 0.32-0.49 s | 0.31-0.35 s |
+| `marksman` | 0.98-1.60 s | 0.98-1.28 s |
+| `yamlls` | 0.31-0.49 s | 0.31-0.35 s |
 | `pyright` | 0.15-0.18 s | 0.15-0.19 s |
 | `jdtls` (`feat/java`) | 3.19-4.40 s | 3.37-3.85 s |
 
@@ -464,6 +468,9 @@ and toggles the patch at runtime:
 | `PATH` scan off | 0.18-0.22 s |
 | `PATH` scan off, again | 0.18-0.22 s |
 | `PATH` scan on, again | 7.0-10.9 s |
+
+A second run of the same toggle against a freshly patched copy produced
+10.27 s, 0.19 s, 0.19 s and 10.02 s for the same four states.
 
 Only the `PATH` scan moves the number. The tree-sitter parser is still loaded
 and still parses in the patched runs; the parse tree for
@@ -488,9 +495,11 @@ Each rule below was run repeatedly against the same real session:
 The false-negative rate depends on how warm the Windows mount is, because
 that moves the attach time. Early in a session the mount is warm and
 `bashls` tends to attach by t=8s or t=10s; later it is slower and attaches
-at t=12s or later. A 10 s rule therefore fails somewhere between 4% and 69%
-of the time depending on the moment it runs, which is exactly the property
-that makes it useless as a test. The 20 s window passes every run.
+at t=12s or later. The two 10 s rules therefore fail at 69% and 40% of the
+time, and an earlier warm-mount run of the two-sample rule failed only 4% of
+the time. A 10 s rule is unreliable by a factor of more than ten depending on
+the moment it runs, which is exactly the property that makes it useless as a
+test. The 20 s window passes every run.
 
 The samples are recorded, so a late attach is visible in the result:
 
@@ -539,8 +548,9 @@ ENTER" prompt when the terminal does not answer its size query.
 - The mason package store is global. Removing an extra does not uninstall
   anything, which is exactly why the explicit `enabled = false` exclusion is
   required.
-- `$PATH` contains 26 Windows-mounted directories under `/mnt/*`, because this
-  is a WSL environment. `bash-language-server` `lstat`s every entry of every
-  `PATH` directory during `initialize`, which costs 7-14 s here and is the
-  reason `bashls` attaches so much later than every other server. See
+- `$PATH` contains 72 entries, 26 of them Windows-mounted directories under
+  `/mnt/*`, because this is a WSL environment. `bash-language-server`
+  `lstat`s every entry of every `PATH` directory during `initialize`, which
+  costs 7-14 s here and is the reason `bashls` attaches so much later than
+  every other server. See
   [Measuring LSP attachment correctly](#measuring-lsp-attachment-correctly).
