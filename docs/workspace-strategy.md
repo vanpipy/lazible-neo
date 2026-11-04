@@ -286,6 +286,51 @@ The Java side is verified by starting Neovim against a real `.java` file and
 checking the attached LSP clients, the `lsp.log` launch attempts, the
 diagnostics, and the spawned processes.
 
+### Acceptance evidence
+
+Each requirement below was checked by running a real Neovim session with a
+real file as its only argument, the way a user opens it. The observed values
+are what the tool actually reported, not what the configuration intends.
+
+| Requirement | Branch | Observation |
+|---|---|---|
+| Python attaches `pyright` and `ruff` | `main` | `clients={ "pyright", "ruff" }` |
+| Python attaches nothing | `feat/java` | `clients={}`, neither `pyright` nor `ruff` present |
+| Go attaches `gopls` | both | `clients={ "gopls" }` |
+| TypeScript and JavaScript attach `vtsls` | both | `clients={ "vtsls" }` |
+| YAML attaches `yamlls` | both | `clients={ "yamlls" }` |
+| JSON attaches `jsonls` | both | `clients={ "jsonls" }` |
+| TeX attaches `texlab` | both | `clients={ "texlab" }` |
+| TOML attaches `taplo` | both | `clients={ "taplo" }` |
+| Markdown attaches `marksman` | both | `clients={ "marksman" }` |
+| Bash attaches `bashls` | both | `clients={ "bashls" }` |
+| Dockerfile attaches `dockerls` | both | `clients={ "dockerls" }` |
+| Lua attaches `lua_ls` | both | `clients={ "lua_ls" }` |
+| A `.java` file attaches nothing | `main` | `clients={}`, `jdtls` absent even though it is installed in mason |
+| A `.java` file attaches exactly one `jdtls` | `feat/java` | `jdtls_client_count=1`, `all_clients_on_buffer={ "jdtls" }` |
+| jdtls runs on a JDK 21+ | `feat/java` | `--java-executable=.../java/21.0.13-tem/bin/java`, reported version `21.0.13` |
+| The project targets Java 8 | `feat/java` | `runtimes={ { name = "JavaSE-1.8", path = ".../java/current", default = true } }` |
+| jdtls reports the Java 8 runtime | `feat/java` | `java.vm.getAllInstalls` lists `JavaSE-1.8` at `.../java/current`, version `1.8.0_432` |
+| A Java 9+ API is an error on a Java 8 target | `feat/java` | `var cannot be resolved to a type`, `List cannot be resolved` |
+| `JdtCompile` produces class files | `feat/java` | clean project: `JdtCompile_ok=true`, `class_files=1` (`bin/Main.class`) |
+| The build still reports the Java 9 API error | `feat/java` | `var cannot be resolved to a type`, `List cannot be resolved`, and jdtls still writes `class_files=2` |
+
+Two notes on how these were measured, because both produced misleading
+results before they were corrected:
+
+- `java.vm.getAllInstalls` is a jdtls **delegate command**, not a raw LSP
+  request method. It has to be sent as `workspace/executeCommand`, so
+  `client.request(...)` fails with `Unsupported request method`.
+- The jdtls workspace is `<tmpdir>/jdtls-<sha1(cwd basename)>`. A stale
+  workspace whose incremental build state no longer matches the sources
+  produces zero class files and looks like a broken configuration.
+
+`javac` refuses to write any output when a compilation fails, so the broken
+project yields no class files at all. jdtls's Eclipse builder does write
+them, which is why the error case still reports `class_files=2`. The class
+file count is therefore not a measure of whether the build succeeded. The
+diagnostics are.
+
 ---
 
 ## Environment notes
