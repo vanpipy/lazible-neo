@@ -189,16 +189,26 @@ server normally.
 
 ### Measured effect
 
-Counting server launch attempts recorded in `lsp.log`, with the branch's
-`lua/plugins/lsp.lua` removed and then restored:
+Counting the `Starting RPC client` entries in `lsp.log`, which is one line per
+server process launch, with the branch's `lua/plugins/lsp.lua` removed and then
+restored:
 
 | Branch | File opened | With `lsp.lua` | Without `lsp.lua` |
 |---|---|---|---|
-| `feat/java` | `.py` | ruff=**0** | ruff=**7** |
-| `feat/java` | `.java` | jdtls=1 | jdtls=1 |
+| `feat/java` | `.py` | ruff=**0**, pyright=**0** | ruff=**1**, pyright=**1** |
+| `feat/java` | `.java` | jdtls=**1** | jdtls=**1** |
 
-Removing the exclusion lets the Python server launch again. Keeping it does
+Removing the exclusion lets the Python servers launch again. Keeping it does
 not affect the Java server.
+
+The attached clients agree with the launch counts: opening the same `.py` file
+gives `clients={}` with the exclusion and `clients={ "pyright", "ruff" }`
+without it.
+
+Count the `Starting RPC client` lines, not every line that mentions a server
+name. A server's stderr is also copied into `lsp.log`, so a plain mention
+count overstates the number of launches (a single jdtls session produced four
+`mason/bin/jdtls` mentions but only one launch).
 
 ---
 
