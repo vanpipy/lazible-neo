@@ -1,5 +1,12 @@
 --- Java toolchain discovery for the `feat/java` branch.
 ---
+--- This module lives under `lua/java/` and NOT under `lua/plugins/`.
+--- `lua/plugins/**` is imported by lazy.nvim as a plugin spec directory, so
+--- every module in it must return a valid plugin spec. This module returns a
+--- plain helper table, which lazy.nvim rejects with
+--- "Invalid plugin spec { find = <function>, ... }", and the discovery logic
+--- would never load.
+---
 --- jdtls needs TWO different JDKs, and conflating them is the classic
 --- source of "jdtls does not start" / "wrong language level" bugs:
 ---
@@ -38,6 +45,7 @@ local M = {}
 ---@class JavaJdk
 ---@field home string      -- absolute path to the JDK home (the dir containing `bin/java`)
 ---@field version number   -- major version, e.g. 8 or 21
+---@field legacy boolean   -- true for the pre-9 "1.x" version scheme (Java 8 and older)
 ---@field source string    -- absolute path to `src.zip`, if present
 
 --- Directories that commonly hold a JDK installation.
@@ -95,7 +103,8 @@ end
 
 --- Read the major version of a JDK from its `release` file (JDK 9+).
 ---@param home string
----@return number?
+---@return number? major
+---@return boolean? legacy
 local function version_from_release_file(home)
   local file = io.open(home .. "/release", "r")
   if not file then
@@ -115,14 +124,16 @@ local function version_from_release_file(home)
   -- Legacy "1.8.0_512" scheme: the major is the SECOND number.
   if version:match("^1%.%d+") then
     major = version:match("^1%.(%d+)")
+    return tonumber(major), true
   end
-  return tonumber(major)
+  return tonumber(major), false
 end
 
 --- Read the major version of a JDK 8 by running its `java -version`.
 --- Java 8 has no `release` file, so `java -version` is the only reliable source.
 ---@param home string
----@return number?
+---@return number? major
+---@return boolean? legacy
 local function version_from_java_binary(home)
   local java = home .. "/bin/java"
   if vim.fn.executable(java) == 0 then
@@ -138,12 +149,14 @@ local function version_from_java_binary(home)
     return nil
   end
   local major
+  local legacy = false
   if version:match("^1%.%d+") then
     major = version:match("^1%.(%d+)")
+    legacy = true
   else
     major = version:match("^(%d+)")
   end
-  return tonumber(major)
+  return tonumber(major), legacy
 end
 
 --- Build a JDK description for a home directory, if it looks like a usable JDK.
@@ -162,7 +175,13 @@ local function probe(home)
   end
 
   -- Prefer the `release` file; fall back to running java (needed for JDK 8).
-  local version = version_from_release_file(home) or version_from_java_binary(home)
+  -- Both return (major, legacy), so they cannot be chained with `or`:
+  -- `version_from_release_file` legitimately returns nil for a JDK without
+  -- a `release` file, and `or` would discard the legacy flag of the fallback.
+  local version, legacy = version_from_release_file(home)
+  if not version then
+    version, legacy = version_from_java_binary(home)
+  end
   if not version then
     return nil
   end
@@ -175,7 +194,7 @@ local function probe(home)
     source = nil
   end
 
-  return { home = home, version = version, source = source }
+  return { home = home, version = version, legacy = legacy, source = source }
 end
 
 --- Find the first JDK at or above `min_version` from the known locations.
@@ -283,6 +302,23 @@ end
 --- The `path` must be the JDK home (the directory containing `bin/java`),
 --- not the `bin` directory itself.
 ---
+--- The `name` must come from the enum jdtls ships in its `mason-schemas`
+--- (jdtls 1.60.0):
+---
+---   JavaSE-1.8, JavaSE-9, JavaSE-10, ... JavaSE-21, ... JavaSE-26
+---
+--- Note that Java 8 is `JavaSE-1.8`, NOT `JavaSE-8`. The name follows the
+--- `JAVA_VERSION` convention (`1.8.0_432`), where the major version of a
+--- legacy release is the second number.
+---
+--- The name is a label, not a lookup key: the server resolves the runtime
+--- by `path`. Measured on jdtls 1.60.0, the observable behaviour (the
+--- diagnostics for a Java 9+ API call) is identical for `JavaSE-1.8`,
+--- `JavaSE-8` and an entirely bogus name, and `java.vm.getAllInstalls`
+--- reports all three. The enum exists so that clients and tooling agree on
+--- a spelling, and `java.vm.getAllInstalls` shows the name back to the user,
+--- so it is kept accurate even though the server would tolerate a mismatch.
+---
 --- The runtime JDK is intentionally NOT listed as a project runtime: it is
 --- the JVM that runs jdtls, not a target for the project's code.
 ---@return table[]?
@@ -294,9 +330,13 @@ function M.runtimes()
 
   local runtimes = {
     {
-      -- Eclipse-style name: the major version, which is what the jdtls
-      -- `JdtSetRuntime` command shows and what `JdtCompile` expects.
-      name = "JavaSE-" .. project.version,
+      -- Eclipse-style name. jdtls ships a fixed enum of accepted names
+      -- (see the mason schema) and spells Java 8 as `JavaSE-1.8`,
+      -- following the `JAVA_VERSION` scheme (`1.8.0_432`) where the major
+      -- version of a legacy release is the second number.
+      --
+      -- The name is a label. The server resolves the runtime by `path`.
+      name = project.legacy and ("JavaSE-1." .. project.version) or ("JavaSE-" .. project.version),
       path = project.home,
       default = true,
     },
