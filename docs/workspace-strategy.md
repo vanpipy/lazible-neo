@@ -16,7 +16,7 @@ same buffers.
 
 | Branch | Purpose | Java tooling | Python tooling |
 |---|---|---|---|
-| `main` | general-purpose editor config | none | none |
+| `main` | general-purpose editor config | none | `pyright`, `ruff` |
 | `feat/java` | Java workspaces | jdtls + JDK discovery | explicitly disabled |
 
 The split is **not** achieved by removing the Python extra alone. See
@@ -42,7 +42,7 @@ dependency:
 ### `feat/java` adds
 
 - `mfussenegger/nvim-jdtls` and the `lazyvim.plugins.extras.lang.java` extra
-- `lua/plugins/java/jdk.lua`: discovery of the two JDKs jdtls needs
+- `lua/java/jdk.lua`: discovery of the two JDKs jdtls needs
 - `lua/plugins/java/jdtls.lua`: pins the jdtls runtime and declares the
   project's target runtime
 - `lua/plugins/lsp.lua`: explicit `enabled = false` for the Python servers
@@ -96,7 +96,7 @@ language level and the platform classes that completion and diagnostics see.
 
 ### Discovery order
 
-`lua/plugins/java/jdk.lua` resolves the two JDKs independently.
+`lua/java/jdk.lua` resolves the two JDKs independently.
 
 Runtime JDK (21+):
 
