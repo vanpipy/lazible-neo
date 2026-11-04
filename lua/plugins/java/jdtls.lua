@@ -23,9 +23,9 @@
 ---   `$JDTLS_JAVA_HOME`   -- the JDK 21+ that runs jdtls
 ---   `$JAVA_PROJECT_HOME` -- the JDK the project targets
 ---
---- See `lua/plugins/java/jdk.lua` for the discovery logic.
+--- See `lua/java/jdk.lua` for the discovery logic.
 
-local jdk = require("plugins.java.jdk")
+local jdk = require("java.jdk")
 
 ---@type LazySpec
 return {
