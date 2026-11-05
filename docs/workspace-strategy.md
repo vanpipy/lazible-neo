@@ -27,7 +27,7 @@ The branches differ in exactly three **configuration** files:
 | `lua/plugins/lsp.lua` | `jdtls = { enabled = false }` | `jdtls = { enabled = true }` |
 | `lua/config/lazy.lua` | no Java import | adds `{ import = "plugins.java" }` |
 
-Plus four files that only exist on `feat/java`:
+Plus three files that only exist on `feat/java`:
 `lua/java/jdk.lua`, `lua/plugins/java/jdtls.lua` and `tests/probe_java.lua`,
 which needs the Java modules to resolve a JDK.
 
