@@ -10,17 +10,32 @@ runtime detection.
 
 ## TL;DR
 
-`main` is the general-purpose configuration. `feat/java` adds Java tooling on
-top of it and removes the Python tooling that would otherwise compete for the
-same buffers.
+`main` is the general-purpose configuration. `feat/java` is `main` **plus**
+Java tooling. The relationship is strictly additive: every feature on `main`
+is present on `feat/java`, and Java is the only difference.
 
 | Branch | Purpose | Java tooling | Python tooling |
 |---|---|---|---|
 | `main` | general-purpose editor config | none | `pyright`, `ruff` |
-| `feat/java` | Java workspaces | jdtls + JDK discovery | explicitly disabled |
+| `feat/java` | `main` plus Java workspaces | jdtls + JDK discovery | `pyright`, `ruff` |
 
-The split is **not** achieved by removing the Python extra alone. See
-[Why the explicit exclusion is load-bearing](#why-the-explicit-exclusion-is-load-bearing).
+The branches differ in exactly three **configuration** files:
+
+| File | `main` | `feat/java` |
+|---|---|---|
+| `lazyvim.json` | no Java extra | adds `lazyvim.plugins.extras.lang.java` |
+| `lua/plugins/lsp.lua` | `jdtls = { enabled = false }` | `jdtls = { enabled = true }` |
+| `lua/config/lazy.lua` | no Java import | adds `{ import = "plugins.java" }` |
+
+Plus four files that only exist on `feat/java`:
+`lua/java/jdk.lua`, `lua/plugins/java/jdtls.lua` and `tests/probe_java.lua`,
+which needs the Java modules to resolve a JDK.
+
+The general-purpose probe lives on both branches:
+`tests/probe_branch.sh` and `tests/probe.lua`.
+
+`main` stays completely Java-free. See
+[Why `main` needs the explicit exclusion](#why-main-needs-the-explicit-exclusion).
 
 ---
 
@@ -41,16 +56,19 @@ dependency:
 
 ### `feat/java` adds
 
+Everything `main` has, plus:
+
 - `mfussenegger/nvim-jdtls` and the `lazyvim.plugins.extras.lang.java` extra
 - `lua/java/jdk.lua`: discovery of the two JDKs jdtls needs
 - `lua/plugins/java/jdtls.lua`: pins the jdtls runtime and declares the
   project's target runtime
-- `lua/plugins/lsp.lua`: explicit `enabled = false` for the Python servers
+- `lua/plugins/lsp.lua`: `jdtls = { enabled = true }`, which is the flip side
+  of `main`'s `enabled = false`
 
 ### `feat/java` removes
 
-- The `lazyvim.plugins.extras.lang.python` extra
-- Explicit enablement of `pyright`, `basedpyright`, `ruff` and `ruff_lsp`
+Nothing. The Python extra stays in `lazyvim.json` and the Python servers
+stay enabled. A feature that exists on `main` must exist on `feat/java`.
 
 The `lazy-lock.json` is **byte-identical** between the two branches, so
 switching branches never churns plugin versions.
@@ -149,66 +167,103 @@ of `JAVA_VERSION="1.8.0_432"` yields major version 8, and
 
 ---
 
-## Why the explicit exclusion is load-bearing
+## Why `main` needs the explicit exclusion
 
-Removing the Python extra from `lazyvim.json` is **not** sufficient to stop
-Python tooling from attaching.
+Removing the Java extra from `lazyvim.json` is **not** sufficient to stop
+Java tooling from attaching.
 
 mason-lspconfig's `automatic_enable` enables every **installed** mason
 package, not just the ones the active extras request. The extras only
 control `ensure_installed`, which decides what gets *installed*. The
 installed set then decides what gets *enabled*.
 
-So if `pyright` happens to be installed in the shared mason package store, it
-gets enabled even when the Python extra is gone entirely.
+So if `jdtls` happens to be installed in the shared mason package store, it
+gets enabled even when the Java extra is gone entirely.
 
 Setting `enabled = false` is what makes LazyVim add the server to mason's
 `automatic_enable.exclude` list. That is the supported opt-out mechanism, and
-it is the mechanism `feat/java` uses:
+it is the mechanism `main` uses:
 
 ```lua
--- lua/plugins/lsp.lua
-local disabled_servers = { "pyright", "basedpyright", "ruff", "ruff_lsp" }
-
+-- lua/plugins/lsp.lua on main
 return {
   {
     "neovim/nvim-lspconfig",
-    opts = function(_, opts)
-      opts.servers = opts.servers or {}
-      for _, server in ipairs(disabled_servers) do
-        opts.servers[server] = opts.servers[server] or {}
-        opts.servers[server].enabled = false
-      end
-    end,
+    opts = {
+      servers = {
+        jdtls = { enabled = false },
+      },
+    },
   },
 }
 ```
 
-The exclusion is surgical. Each branch still launches its **own** language's
-server normally.
+On `feat/java` the same key is flipped to `enabled = true`, because there the
+Java tooling is wanted:
+
+```lua
+-- lua/plugins/lsp.lua on feat/java
+return {
+  {
+    "neovim/nvim-lspconfig",
+    opts = {
+      servers = {
+        jdtls = { enabled = true },
+      },
+    },
+  },
+}
+```
+
+The exclusion is surgical, and it applies to Java only. Neither branch
+touches the Python servers: they are configured by the
+`lazyvim.plugins.extras.lang.python` extra, which both branches list in
+`lazyvim.json`.
+
+### Why the repo's own `plugins` import must not repeat the extras
+
+The repo's `plugins` import is merged **after** the LazyVim extras, so a
+value set in `lua/plugins/lsp.lua` wins over the extra's value for the same
+key. Measured on `feat/java` with the Python extra present and the repo's
+`lsp.lua` disabling the Python servers:
+
+```
+PROBE_SERVER final pyright enabled=false
+PROBE_SERVER final ruff   enabled=false
+```
+
+That is the reason `feat/java` must not name the Python servers at all. The
+extra sets them to `enabled = true`, and the repo's file, being merged later,
+would silently override that back to `false`. The file states one fact about
+one server, and lets the extra own the rest.
 
 ### Measured effect
 
-Counting the `Starting RPC client` entries in `lsp.log`, which is one line per
-server process launch, with the branch's `lua/plugins/lsp.lua` removed and then
-restored:
+Measured with `tests/probe_branch.sh`, which runs a real Neovim session
+against the checkout under test and reports the clients that actually
+attached. See [Verifying a change](#verifying-a-change) for how the probe
+works and why its timing rules matter.
 
-| Branch | File opened | With `lsp.lua` | Without `lsp.lua` |
-|---|---|---|---|
-| `feat/java` | `.py` | ruff=**0**, pyright=**0** | ruff=**1**, pyright=**1** |
-| `feat/java` | `.java` | jdtls=**1** | jdtls=**1** |
+| Branch | File opened | Attached clients |
+|---|---|---|
+| `main` | `.py` | `{ "pyright", "ruff" }` |
+| `main` | `.java` | `{}`, `jdtls` absent even though it is installed in mason |
+| `feat/java` | `.py` | `{ "pyright", "ruff" }` |
+| `feat/java` | `.java` | `{ "jdtls" }` |
 
-Removing the exclusion lets the Python servers launch again. Keeping it does
-not affect the Java server.
+The merged server table agrees:
 
-The attached clients agree with the launch counts: opening the same `.py` file
-gives `clients={}` with the exclusion and `clients={ "pyright", "ruff" }`
-without it.
+| Server | `main` | `feat/java` |
+|---|---|---|
+| `jdtls` | `enabled=false` | `enabled=true` |
+| `pyright` | `enabled=true` | `enabled=true` |
+| `ruff` | `enabled=true` | `enabled=true` |
+| `basedpyright` | `enabled=false` | `enabled=false` |
+| `ruff_lsp` | `enabled=false` | `enabled=false` |
 
-Count the `Starting RPC client` lines, not every line that mentions a server
-name. A server's stderr is also copied into `lsp.log`, so a plain mention
-count overstates the number of launches (a single jdtls session produced four
-`mason/bin/jdtls` mentions but only one launch).
+`basedpyright` and `ruff_lsp` stay disabled on **both** branches, because
+the Python extra disables them itself. That is the extra's choice, and this
+repo does not override it.
 
 ---
 
@@ -262,11 +317,35 @@ git rebase main
 Rebasing rather than merging keeps the Java branch's history a linear
 sequence of Java-specific commits on top of `main`.
 
+Because the relationship is additive, a rebase must never remove a feature
+that `main` has. After every rebase, check that `main`'s extras are all
+still present on `feat/java`:
+
+```bash
+python3 - <<'PY'
+import json, subprocess
+
+def extras(ref):
+    raw = subprocess.run(
+        ["git", "show", f"{ref}:lazyvim.json"], capture_output=True, check=True
+    ).stdout
+    return set(json.loads(raw)["extras"])
+
+missing = extras("main") - extras("feat/java")
+print("missing from feat/java:", sorted(missing) or "none")
+PY
+```
+
+The command must print `none`. Any other output is a feature that `main`
+has and `feat/java` lost, which is exactly the regression this branch layout
+is meant to prevent. The reverse difference is expected and must be exactly
+`lazyvim.plugins.extras.lang.java`.
+
 If the rebase conflicts, the files most likely to conflict are:
 
 - `lazyvim.json`: both branches change the extras list
-- `lua/plugins/lsp.lua`: only `feat/java` changes it, so it should apply
-  cleanly
+- `lua/plugins/lsp.lua`: both branches change it, but in opposite directions
+  (`jdtls` enabled vs disabled), so it should apply cleanly
 - `lua/plugins/extras/refactoring.lua`: only `main` changes it, so it should
   apply cleanly
 
@@ -306,6 +385,41 @@ The Java side is verified by starting Neovim against a real `.java` file and
 checking the attached LSP clients, the `lsp.log` launch attempts, the
 diagnostics, and the spawned processes.
 
+### Probing a branch
+
+`tests/probe_branch.sh` runs a real Neovim session against a checkout and
+reports the LSP clients that actually attached, plus the merged
+`nvim-lspconfig` server table:
+
+```bash
+# the current checkout
+tests/probe_branch.sh . /tmp/probe.out
+
+# another checkout, for example a worktree of main
+tests/probe_branch.sh /path/to/main-worktree /tmp/probe-main.out
+```
+
+It accepts an optional third argument, the probe script to run. On
+`feat/java`, `tests/probe_java.lua` is a narrower probe that reports the
+resolved JDKs and polls specifically for `jdtls`:
+
+```bash
+tests/probe_branch.sh . /tmp/probe-java.out tests/probe_java.lua
+```
+
+That probe only exists on `feat/java`, because it resolves the JDKs through
+the Java modules that `main` does not have.
+
+The probe points `XDG_CONFIG_HOME` at a sandbox whose `nvim/` is a symlink to
+the checkout under test. Without that, Neovim loads the live
+`~/.config/nvim`, which is a **separate clone** of this repository and would
+silently measure the wrong configuration.
+
+The sandbox is removed on exit. jdtls keeps writing into its workspace cache
+while it shuts down, so the removal is retried a few times before it gives
+up and prints a warning. A leftover sandbox is harmless: it holds only a
+jdtls workspace cache, and the next run creates its own.
+
 ### Acceptance evidence
 
 Each requirement below was checked by running a real Neovim session with a
@@ -315,7 +429,7 @@ are what the tool actually reported, not what the configuration intends.
 | Requirement | Branch | Observation |
 |---|---|---|
 | Python attaches `pyright` and `ruff` | `main` | `clients={ "pyright", "ruff" }` |
-| Python attaches nothing | `feat/java` | `clients={}`, neither `pyright` nor `ruff` present |
+| Python attaches `pyright` and `ruff` | `feat/java` | `clients={ "pyright", "ruff" }` |
 | Go attaches `gopls` | both | `clients={ "gopls" }` |
 | TypeScript and JavaScript attach `vtsls` | both | `clients={ "vtsls" }` |
 | YAML attaches `yamlls` | both | `clients={ "yamlls" }` |
@@ -328,12 +442,19 @@ are what the tool actually reported, not what the configuration intends.
 | Lua attaches `lua_ls` | both | `clients={ "lua_ls" }` |
 | A `.java` file attaches nothing | `main` | `clients={}`, `jdtls` absent even though it is installed in mason |
 | A `.java` file attaches exactly one `jdtls` | `feat/java` | `jdtls_client_count=1`, `all_clients_on_buffer={ "jdtls" }` |
+| `jdtls` is excluded from mason on `main` | `main` | `PROBE_SERVER final jdtls enabled=false` |
+| `jdtls` is enabled on `feat/java` | `feat/java` | `PROBE_SERVER final jdtls enabled=true` |
+| The Python servers are enabled on both branches | both | `PROBE_SERVER final pyright enabled=true`, `... ruff enabled=true` |
 | jdtls runs on a JDK 21+ | `feat/java` | `--java-executable=.../java/21.0.13-tem/bin/java`, reported version `21.0.13` |
 | The project targets Java 8 | `feat/java` | `runtimes={ { name = "JavaSE-1.8", path = ".../java/current", default = true } }` |
 | jdtls reports the Java 8 runtime | `feat/java` | `java.vm.getAllInstalls` lists `JavaSE-1.8` at `.../java/current`, version `1.8.0_432` |
 | A Java 9+ API is an error on a Java 8 target | `feat/java` | `var cannot be resolved to a type`, `List cannot be resolved` |
 | `JdtCompile` produces class files | `feat/java` | clean project: `JdtCompile_ok=true`, `class_files=1` (`bin/Main.class`) |
 | The build still reports the Java 9 API error | `feat/java` | `var cannot be resolved to a type`, `List cannot be resolved`, and jdtls still writes `class_files=2` |
+
+The rows that cover the Python servers on `feat/java` are the ones that
+changed when the branch relationship was made additive. Before that change,
+`feat/java` reported `clients={}` for a `.py` file.
 
 Two notes on how these were measured, because both produced misleading
 results before they were corrected:
