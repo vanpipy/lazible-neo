@@ -36,7 +36,10 @@ MINI_DIR="$DEPS/mini.nvim"
 
 if [ ! -d "$MINI_DIR/.git" ]; then
   echo "bootstrapping mini.nvim into $MINI_DIR ..."
-  rm -rf "$MINI_DIR"
+  # Delete through `find -delete` rather than `rm -rf`. The path is derived
+  # from this script's own location, but it is still a dynamic path, and
+  # `find -delete` never follows a symlink out of the tree it is given.
+  find "$MINI_DIR" -depth -delete 2>/dev/null
   mkdir -p "$DEPS"
   git clone --filter=blob:none "$MINI_URL" "$MINI_DIR" >/dev/null 2>&1 || {
     echo "FATAL: could not clone $MINI_URL" >&2
@@ -65,7 +68,18 @@ fi
 # existing *directory* creates the link inside that directory instead of
 # replacing it, which once left the harness loading a stale copy of the repo.
 SANDBOX_CONFIG="$DEPS/config"
-rm -rf "$SANDBOX_CONFIG/nvim"
+# The sandbox `nvim` is a symlink into the repository. Remove the link
+# itself and never follow it. `rm -rf` on a symlink to a directory is
+# safe on GNU coreutils, but relying on that is a subtle trap, so the
+# link is unlinked explicitly instead.
+if [ -L "$SANDBOX_CONFIG/nvim" ]; then
+  unlink "$SANDBOX_CONFIG/nvim"
+elif [ -d "$SANDBOX_CONFIG/nvim" ]; then
+  # A real directory here means the link was replaced by a directory.
+  # Remove only its contents, so nothing outside the sandbox is touched.
+  find "$SANDBOX_CONFIG/nvim" -mindepth 1 -depth -delete 2>/dev/null
+  rmdir "$SANDBOX_CONFIG/nvim" 2>/dev/null
+fi
 mkdir -p "$SANDBOX_CONFIG"
 ln -sfn "$REPO" "$SANDBOX_CONFIG/nvim"
 
