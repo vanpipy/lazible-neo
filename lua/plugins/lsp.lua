@@ -1,34 +1,42 @@
--- Language-specific LSP server configuration.
+-- LSP overrides for the `feat/java` branch.
 --
--- This branch (feat/java) targets Java workspaces only. The Python tooling is
--- deliberately excluded so that mason-lspconfig's `automatic_enable` cannot
--- re-enable `pyright`/`ruff` just because they happen to be installed in the
--- shared mason package store.
+-- This branch is `main` PLUS Java. Everything that `main` provides is
+-- present here as well, including the Python tooling (`pyright`, `ruff`),
+-- which comes from the `lazyvim.plugins.extras.lang.python` extra listed in
+-- `lazyvim.json`.
 --
--- Why this is needed: mason-lspconfig's `automatic_enable` enables every
--- *installed* mason package, not just the ones the active extras request. The
--- extras only control `ensure_installed` (what gets installed). Removing the
--- Python extra from `lazyvim.json` therefore does NOT stop an already-installed
--- `pyright` from being enabled and attaching to `.py` buffers.
+-- Exactly one key differs from `main`:
 --
--- Setting `enabled = false` makes LazyVim add the server to mason's
--- `automatic_enable.exclude` list, which is the supported way to opt out.
+--   * `main`      -> `jdtls = { enabled = false }`  (main stays Java-free)
+--   * `feat/java` -> `jdtls = { enabled = true }`   (Java support is additive)
 --
--- See docs/workspace-strategy.md for the benchmark that motivated this.
-
----@type string[]
-local disabled_servers = { "pyright", "basedpyright", "ruff", "ruff_lsp" }
+-- Why the flag exists at all: mason-lspconfig automatically enables every
+-- server that is installed in the shared mason package store, regardless of
+-- whether the current configuration asks for it. On `main` that would start
+-- a jdtls process on a machine that happens to have jdtls installed, even
+-- though the Java extra is not part of `main`. LazyVim honours
+-- `opts.servers.<name>.enabled = false` by adding the server to Mason's
+-- automatic-enablement exclusion list, which is the supported way to opt out.
+--
+-- On this branch the flag is flipped back to `true`, so that the Java extra
+-- and `lua/plugins/java/jdtls.lua` own the jdtls lifecycle. The Java extra
+-- installs a `setup.jdtls` handler that returns `true` to skip a duplicate
+-- lspconfig-managed client, because `nvim-jdtls` attaches on its own.
+--
+-- The Python servers are deliberately NOT listed here. They are configured
+-- by the Python extra, and this file must not override that configuration.
+-- The repo's own `plugins` import is merged AFTER the LazyVim extras, so an
+-- `enabled` value set here would win over the extra's.
+--
+-- See docs/workspace-strategy.md for the measurements behind this.
 
 return {
   {
     "neovim/nvim-lspconfig",
-    opts = function(_, opts)
-      opts.servers = opts.servers or {}
-
-      for _, server in ipairs(disabled_servers) do
-        opts.servers[server] = opts.servers[server] or {}
-        opts.servers[server].enabled = false
-      end
-    end,
+    opts = {
+      servers = {
+        jdtls = { enabled = true },
+      },
+    },
   },
 }
