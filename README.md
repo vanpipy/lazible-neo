@@ -35,6 +35,24 @@ Follow the [LazyVim](https://github.com/LazyVim/LazyVim) and [lazy.nvim](https:/
   - `ga` go to beginning of line
   - `gl` go to end of line
 
+- Gitsigns (leader is `;`):
+  - `;hs` stage hunk
+  - `;hr` reset hunk
+  - `;hS` stage buffer
+  - `;hR` reset buffer
+  - `;hp` preview hunk
+  - `;hi` preview hunk inline
+  - `;hb` blame line
+  - `;hd` diff this
+  - `;hD` diff this `~`
+  - `;hQ` hunks of all repositories (quickfix list)
+  - `;hq` hunks of the current buffer (quickfix list)
+  - `;hs` and `;hr` also work in Visual mode, and stage or reset the selected range
+
+  LazyVim's own `<leader>gh*` shortcuts are still available alongside these.
+  The `<leader>h*` ones are global, so they work in any buffer, while the
+  `<leader>gh*` ones only exist in git-backed buffers.
+
 ```bash
 git clone https://github.com/vanpipy/lazible-neo.git ~/.config/nvim
 ```

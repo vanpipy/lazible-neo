@@ -113,7 +113,7 @@ mkdir -p "$DEPS/state" "$DEPS/cache" "$DEPS/work"
 cd "$REPO" || exit 1
 
 # The suites to run. Each one is a separate mini.test file.
-SUITES=${*:-"tests/suites/refactoring.lua tests/suites/smoke.lua"}
+SUITES=${*:-"tests/suites/refactoring.lua tests/suites/smoke.lua tests/suites/gitsigns.lua"}
 
 status=0
 for suite in $SUITES; do
