@@ -43,6 +43,7 @@ Follow the [LazyVim](https://github.com/LazyVim/LazyVim) and [lazy.nvim](https:/
   - `;hp` preview hunk
   - `;hi` preview hunk inline
   - `;hb` blame line
+  - `;hB` toggle the inline blame annotation
   - `;hd` diff this
   - `;hD` diff this `~`
   - `;hQ` hunks of all repositories (quickfix list)
@@ -52,6 +53,12 @@ Follow the [LazyVim](https://github.com/LazyVim/LazyVim) and [lazy.nvim](https:/
   LazyVim's own `<leader>gh*` shortcuts are still available alongside these.
   The `<leader>h*` ones are global, so they work in any buffer, while the
   `<leader>gh*` ones only exist in git-backed buffers.
+
+- Current line author:
+  - The author of the line under the cursor is shown inline, at the end of the
+    line, with no keypress at all. It updates as you move the cursor.
+  - `;hb` opens the full blame popup (commit, summary, file) for that line.
+  - `;hB` switches the inline annotation off and on again.
 
 ```bash
 git clone https://github.com/vanpipy/lazible-neo.git ~/.config/nvim

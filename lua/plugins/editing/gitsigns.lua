@@ -27,6 +27,12 @@
 --   <leader>hb  blame line (full)     <leader>hd  diff this
 --   <leader>hD  diff this ~           <leader>hQ  hunks of all repos (qflist)
 --   <leader>hq  hunks of this buffer  (qflist)
+--   <leader>hB  toggle the inline blame annotation
+--
+-- The inline blame annotation is enabled by default (see `opts` below), so
+-- the author of the line under the cursor is on screen without any keypress.
+-- `<leader>hb` is the on-demand complement: it opens the full blame popup
+-- with the commit, the summary and the file.
 --
 -- Two things are deliberately different from the upstream snippet this is
 -- based on.
@@ -67,6 +73,25 @@ end
 
 return {
   "lewis6991/gitsigns.nvim",
+  opts = {
+    -- Show who last touched the line under the cursor, inline, at the end of
+    -- the line. This is the fast answer to "who wrote this line?": it needs
+    -- no keypress at all.
+    --
+    -- gitsigns reads this option when it attaches to a buffer, and the
+    -- annotation is refreshed on CursorMoved, so it always tracks the cursor.
+    current_line_blame = true,
+    -- Deliberately compact. The default formatter also appends the commit
+    -- summary, which is long enough to push the annotation off the screen.
+    -- The full detail is one keypress away with `<leader>hb`.
+    current_line_blame_formatter = " <author>, <author_time:%R> ",
+    current_line_blame_opts = {
+      -- The default is 1000ms, which feels sluggish while the cursor is
+      -- moving. 500ms is still cheap: gitsigns caches the blame per buffer,
+      -- so only the first lookup in a buffer costs a `git blame` call.
+      delay = 500,
+    },
+  },
   keys = {
     -- Stage / reset a single hunk.
     {
@@ -146,6 +171,20 @@ return {
       end,
       mode = "n",
       desc = "Gitsigns Blame Line",
+    },
+    -- Toggle the inline blame annotation.
+    --
+    -- The action flips `config.current_line_blame`, and gitsigns subscribes to
+    -- that option: flipping it re-runs the setup, which removes the
+    -- annotation when it is switched off and restores it when it is switched
+    -- back on.
+    {
+      "<leader>hB",
+      function()
+        require("gitsigns").toggle_current_line_blame()
+      end,
+      mode = "n",
+      desc = "Gitsigns Toggle Current Line Blame",
     },
 
     -- Diff.
